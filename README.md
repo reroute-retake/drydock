@@ -55,8 +55,22 @@ Develop drydock inside its own space: `make dev` builds `dock-dev` into
 `~/.local/bin`; drive the workflow with `dock-dev` while stable `dock` keeps
 running. Promote only after `dock-dev version && dock-dev doctor`.
 
-## Status / next (M1)
+## Status
 
-M0 = structure + schemas + spike. M1 wires real `setup/build/start/shell/stop`,
-manifest parsing (adds `gopkg.in/yaml.v3`), `.env` injection, mounts, the
-LiteLLM sidecar, telemetry capture, and packaging via GoReleaser + `install.sh`.
+- **M0** — structure, schemas, spike. ✅
+- **M1** — `dock setup/build/start/shell/stop` functional; manifest parsing
+  (`gopkg.in/yaml.v3`); per-space LiteLLM gateway + docker-compose generated from
+  the manifest; `repos`/`vault`/`works` mounts; `.env` injection; telemetry
+  session capture; `--dry-run` to preview docker commands. ✅
+- **M2 (next)** — `dock addrepo` with stack detection → per-stack image layers;
+  `dock sync` / `space switch` / `update`; Serena + core MCP wiring;
+  `dock self-update` + `install.sh`; ad-hoc `dock forward`.
+
+Try it (no Docker needed to preview):
+
+```bash
+make install
+DRYDOCK_HOME=/tmp/dh dock setup demo     # scaffold + activate a space
+dock --dry-run build                     # generate gateway+compose, print the docker cmd
+dock --dry-run start                     # create a telemetry session, print 'up'
+```
