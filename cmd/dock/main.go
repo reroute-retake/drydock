@@ -21,6 +21,7 @@ import (
 	"github.com/reroute-retake/drydock/internal/stack"
 	"github.com/reroute-retake/drydock/internal/telemetry"
 	"github.com/reroute-retake/drydock/internal/version"
+	"github.com/reroute-retake/drydock/internal/works"
 )
 
 var dryRun bool
@@ -45,6 +46,11 @@ Environment:
   stop               Stop the space containers
   sync               git pull --ff-only all repos in the active space
   space switch <s>   Switch the active space
+
+Tickets (lifecycle state — the works/ artifact contract):
+  work new <ticket>  Scaffold a ticket's works/ folder (ticket.md, state.yaml) and make it active
+  work status [t]    Show a ticket's phase state
+  work set <phase> <status> [--model m --note n --artifact f]   Record phase progress
 
 Maintenance:
   update             Refresh the active space's config/scaffolding (NOT the binary)
@@ -97,6 +103,8 @@ func main() {
 		err = cmdSpace(args)
 	case "update":
 		err = cmdUpdate(args)
+	case "work":
+		err = cmdWork(args)
 	case "forward":
 		err = cmdForward(args)
 	case "self-update":
@@ -378,6 +386,117 @@ func cmdSelfUpdate(args []string) error {
 	}
 	fmt.Printf("updated %s -> %s\n", version.Version, v)
 	return nil
+}
+
+func cmdWork(args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("usage: dock work <new|status|set> ...")
+	}
+	sp, err := activeSpace()
+	if err != nil {
+		return err
+	}
+	switch args[0] {
+	case "new":
+		if len(args) < 2 {
+			return fmt.Errorf("usage: dock work new <ticket>")
+		}
+		ticket := args[1]
+		dir := filepath.Join(sp.Works, ticket)
+		if _, err := works.Scaffold(dir, sp.Name, ticket); err != nil {
+			return err
+		}
+		if err := os.WriteFile(filepath.Join(sp.Drydock, "active_ticket"), []byte(ticket+"\n"), 0o644); err != nil {
+			return err
+		}
+		fmt.Printf("ticket %q ready at %s (active)\n", ticket, dir)
+		fmt.Println("edit ticket.md, then run the analyze skill inside 'dock shell'")
+		return nil
+
+	case "status":
+		ticket, err := resolveTicket(sp, args[1:])
+		if err != nil {
+			return err
+		}
+		st, err := works.Load(filepath.Join(sp.Works, ticket, "state.yaml"))
+		if err != nil {
+			return err
+		}
+		printStatus(st)
+		return nil
+
+	case "set":
+		if len(args) < 3 {
+			return fmt.Errorf("usage: dock work set <phase> <status> [--model m --note n --artifact f]")
+		}
+		phase, status := works.Phase(args[1]), args[2]
+		var model, note string
+		var arts []string
+		fl := args[3:]
+		for i := 0; i < len(fl); i++ {
+			switch fl[i] {
+			case "--model":
+				if i++; i < len(fl) {
+					model = fl[i]
+				}
+			case "--note":
+				if i++; i < len(fl) {
+					note = fl[i]
+				}
+			case "--artifact":
+				if i++; i < len(fl) {
+					arts = append(arts, fl[i])
+				}
+			}
+		}
+		ticket, err := resolveTicket(sp, nil)
+		if err != nil {
+			return err
+		}
+		path := filepath.Join(sp.Works, ticket, "state.yaml")
+		st, err := works.Load(path)
+		if err != nil {
+			return err
+		}
+		if err := st.Mark(phase, status, model, note, arts...); err != nil {
+			return err
+		}
+		if err := st.Save(path); err != nil {
+			return err
+		}
+		fmt.Printf("%s: %s -> %s\n", ticket, phase, status)
+		return nil
+
+	default:
+		return fmt.Errorf("usage: dock work <new|status|set> ...")
+	}
+}
+
+func resolveTicket(sp paths.Space, args []string) (string, error) {
+	if len(args) > 0 && args[0] != "" {
+		return args[0], nil
+	}
+	b, err := os.ReadFile(filepath.Join(sp.Drydock, "active_ticket"))
+	if err != nil {
+		return "", fmt.Errorf("no active ticket; run 'dock work new <ticket>' or pass a ticket name")
+	}
+	return strings.TrimSpace(string(b)), nil
+}
+
+func printStatus(st *works.State) {
+	fmt.Printf("ticket %s (space %s) — current: %s  backend: %s\n", st.Ticket, st.Space, st.Current, st.TaskBackend)
+	for _, p := range works.Order {
+		ps := st.Phases[p]
+		gate := ""
+		if ps.Gate == works.GateHuman {
+			gate = "  [human gate]"
+		}
+		extra := ps.Model
+		if len(ps.Artifacts) > 0 {
+			extra = strings.TrimSpace(extra + " " + strings.Join(ps.Artifacts, ","))
+		}
+		fmt.Printf("  %-9s %-12s%s %s\n", p, ps.Status, gate, extra)
+	}
 }
 
 func cmdForward(args []string) error {

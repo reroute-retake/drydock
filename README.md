@@ -75,8 +75,10 @@ running. Promote only after `dock-dev version && dock-dev doctor`.
 - **M3** — `dock self-update` (download latest release, verify checksum, atomic
   replace, graceful on root-owned) and `install.sh`, both consuming GoReleaser
   artifacts. ✅
-- **M4 (next)** — lifecycle skills (`analyze`/`plan`/`develop`/`ship`) over the
-  works/ artifact contract; ad-hoc `dock forward`.
+- **M4** — works/ artifact contract loader/writer + `dock work new/status/set`;
+  `analyze`/`plan`/`develop`/`ship` SKILL.md files over the contract. ✅
+- **M5 (next)** — `grill`/`review`/`triage`/`test` skills + gates; vault
+  `archive`→`ingest` interface; `handoff`; ad-hoc `dock forward`.
 
 Try it (no Docker needed to preview):
 

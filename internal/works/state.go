@@ -92,8 +92,8 @@ func (s *State) CanEnter(p Phase) bool {
 	if i <= 0 {
 		return true
 	}
-	if _, seen := s.Phases[p]; seen {
-		return true // back-edge into a phase we've already touched
+	if cur, ok := s.Phases[p]; ok && cur.Status != StatusPending {
+		return true // re-entry / back-edge into a phase already worked on
 	}
 	prev, ok := s.Phases[Order[i-1]]
 	return ok && satisfied(prev.Status)
