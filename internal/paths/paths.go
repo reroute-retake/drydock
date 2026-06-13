@@ -64,6 +64,9 @@ func (s Space) Compose() string { return filepath.Join(s.Drydock, "compose.yaml"
 // LiteLLM is the generated gateway config path.
 func (s Space) LiteLLM() string { return filepath.Join(s.Drydock, "litellm.config.yaml") }
 
+// Dockerfile is the generated per-space Dockerfile path.
+func (s Space) Dockerfile() string { return filepath.Join(s.Drydock, "Dockerfile") }
+
 // SessionDir is the host telemetry dir for a (ticket, session) under a space.
 func SessionDir(space, ticket, session string) string {
 	return filepath.Join(StateHome(), "sessions", space, ticket, session)

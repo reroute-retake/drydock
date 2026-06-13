@@ -62,9 +62,11 @@ running. Promote only after `dock-dev version && dock-dev doctor`.
   (`gopkg.in/yaml.v3`); per-space LiteLLM gateway + docker-compose generated from
   the manifest; `repos`/`vault`/`works` mounts; `.env` injection; telemetry
   session capture; `--dry-run` to preview docker commands. ✅
-- **M2 (next)** — `dock addrepo` with stack detection → per-stack image layers;
-  `dock sync` / `space switch` / `update`; Serena + core MCP wiring;
-  `dock self-update` + `install.sh`; ad-hoc `dock forward`.
+- **M2** — `dock addrepo` (clone + stack detection → per-stack image layers),
+  `dock sync`, `dock space switch`, `dock update`; `build` now builds a generated
+  per-stack Dockerfile. ✅
+- **M3 (next)** — `dock self-update` + `install.sh`; ad-hoc `dock forward`;
+  lifecycle skills (`analyze`/`plan`/`develop`/`ship`) with the artifact contract.
 
 Try it (no Docker needed to preview):
 

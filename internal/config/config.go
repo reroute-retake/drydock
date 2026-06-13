@@ -134,6 +134,16 @@ func (m *Manifest) ModelForPhase(phase string) (role string, model Model, ok boo
 	return role, model, ok
 }
 
+// Save marshals the manifest back to YAML at path. Note: this normalizes the
+// file (comments in a hand-edited space.yaml are not preserved).
+func (m *Manifest) Save(path string) error {
+	b, err := yaml.Marshal(m)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, b, 0o644)
+}
+
 // Template returns a starter space.yaml for `dock setup <space>`.
 func Template(space string) []byte {
 	return []byte(fmt.Sprintf(starter, space))
@@ -145,7 +155,7 @@ vault:
   branch: main
 repos: []            # add with: dock addrepo <git-url>
 image:
-  base: drydock/base:1.x
+  base: debian:12-slim
   stacks: []
 ports: []            # dev-server ports published at 'dock start'
 mcp:

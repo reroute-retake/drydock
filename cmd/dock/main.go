@@ -1,21 +1,23 @@
 // Command dock is the drydock host-side orchestrator.
 //
-// M1: setup/build/start/shell/stop are functional (build/start/shell/stop shell
-// out to `docker compose`; pass --dry-run to print the commands instead of
-// running them). version and doctor are functional. addrepo/sync/space/update/
-// self-update remain stubs for later milestones.
+// M1: setup/build/start/shell/stop. M2 adds addrepo (clone + stack detection ->
+// per-stack image layers), sync, space switch, and update, and build now builds
+// the generated Dockerfile. Pass --dry-run to print docker/git commands instead
+// of running them. self-update/run remain stubs for later milestones.
 package main
 
 import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/reroute-retake/drydock/internal/config"
 	"github.com/reroute-retake/drydock/internal/gen"
 	"github.com/reroute-retake/drydock/internal/paths"
+	"github.com/reroute-retake/drydock/internal/stack"
 	"github.com/reroute-retake/drydock/internal/telemetry"
 	"github.com/reroute-retake/drydock/internal/version"
 )
@@ -28,23 +30,23 @@ Usage: dock [--dry-run] <command> [args]
 
 Environment:
   setup <space>      Scaffold a space (repos/vault/works, manifest, .env) and make it active
-  addrepo <url>      Clone a repo into the active space and detect its stack   [stub]
-  build              Generate gateway+compose from the manifest and validate
+  addrepo <url>      Clone a repo into the active space, detect its stack, update the manifest
+  build              Generate gateway+compose+Dockerfile and build the dev image
   start              Start the space container + LiteLLM gateway; publish ports
   shell              Attach a shell to the running space container
-  forward <h:c>      Ad-hoc port forward host:container                         [M2]
+  forward <h:c>      Ad-hoc port forward host:container                         [M3]
   stop               Stop the space containers
-  sync               git pull all repos in the active space                     [stub]
-  space switch <s>   Switch the active space                                    [stub]
+  sync               git pull --ff-only all repos in the active space
+  space switch <s>   Switch the active space
 
 Maintenance:
-  update             Refresh the active space's config/scaffolding (NOT the binary) [stub]
-  self-update        Replace the dock binary from the latest release               [stub]
+  update             Refresh the active space's config/scaffolding (NOT the binary)
+  self-update        Replace the dock binary from the latest release             [stub]
   doctor             Diagnose the local environment
   version            Print version
 
 Flags:
-  --dry-run          Print docker/compose commands instead of executing them
+  --dry-run          Print docker/git commands instead of executing them
 `
 
 func main() {
@@ -72,6 +74,8 @@ func main() {
 		os.Exit(doctor())
 	case "setup":
 		err = cmdSetup(args)
+	case "addrepo":
+		err = cmdAddrepo(args)
 	case "build":
 		err = cmdBuild(args)
 	case "start":
@@ -80,9 +84,15 @@ func main() {
 		err = cmdShell(args)
 	case "stop":
 		err = cmdStop(args)
+	case "sync":
+		err = cmdSync(args)
+	case "space":
+		err = cmdSpace(args)
+	case "update":
+		err = cmdUpdate(args)
 	case "forward":
 		err = cmdForward(args)
-	case "addrepo", "sync", "space", "update", "self-update", "run":
+	case "self-update", "run":
 		stub(cmd, args)
 	default:
 		fmt.Fprintf(os.Stderr, "dock: unknown command %q\n\n", cmd)
@@ -105,11 +115,11 @@ func setActive(space string) error {
 	if err := os.MkdirAll(paths.StateHome(), 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(paths.StateHome()+"/active", []byte(space+"\n"), 0o644)
+	return os.WriteFile(filepath.Join(paths.StateHome(), "active"), []byte(space+"\n"), 0o644)
 }
 
 func activeSpace() (paths.Space, error) {
-	b, err := os.ReadFile(paths.StateHome() + "/active")
+	b, err := os.ReadFile(filepath.Join(paths.StateHome(), "active"))
 	if err != nil {
 		return paths.Space{}, fmt.Errorf("no active space; run 'dock setup <space>' first")
 	}
@@ -118,6 +128,18 @@ func activeSpace() (paths.Space, error) {
 		return paths.Space{}, fmt.Errorf("active space is empty; run 'dock setup <space>'")
 	}
 	return paths.For(name), nil
+}
+
+func loadActive() (paths.Space, *config.Manifest, error) {
+	sp, err := activeSpace()
+	if err != nil {
+		return paths.Space{}, nil, err
+	}
+	m, err := config.Load(sp.Manifest())
+	if err != nil {
+		return paths.Space{}, nil, err
+	}
+	return sp, m, nil
 }
 
 // --- commands --------------------------------------------------------------
@@ -153,7 +175,7 @@ func cmdSetup(args []string) error {
 		return err
 	}
 	fmt.Printf("space %q ready at %s (now active)\n", space, sp.Root)
-	fmt.Println("next: edit space.yaml + .env, then 'dock build' and 'dock start'")
+	fmt.Println("next: 'dock addrepo <url>', then 'dock build' and 'dock start'")
 	return nil
 }
 
@@ -163,35 +185,41 @@ OPENAI_API_KEY=
 LITELLM_MASTER_KEY=sk-drydock-local
 `
 
-// writeGenerated renders the gateway config and compose file into .drydock/.
-func writeGenerated(sp paths.Space, m *config.Manifest) error {
-	if err := os.MkdirAll(sp.Drydock, 0o755); err != nil {
-		return err
+func cmdAddrepo(args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("usage: dock addrepo <git-url>")
 	}
-	lc, err := gen.LiteLLMConfig(m)
+	url := args[0]
+	sp, m, err := loadActive()
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(sp.LiteLLM(), []byte(lc), 0o644); err != nil {
+	name := repoName(url)
+	dest := filepath.Join(sp.Repos, name)
+	if _, err := os.Stat(dest); os.IsNotExist(err) {
+		if err := run("git", "clone", url, dest); err != nil {
+			return err
+		}
+	} else {
+		fmt.Println("repo already present:", dest)
+	}
+	res := stack.Detect(dest) // empty under --dry-run (clone skipped)
+	if !repoKnown(m, url) {
+		m.Repos = append(m.Repos, config.Repo{URL: url, Stack: res.Stack})
+	}
+	if res.Layer != "" {
+		m.Image.Stacks = addUnique(m.Image.Stacks, res.Layer)
+	}
+	if err := m.Save(sp.Manifest()); err != nil {
 		return err
 	}
-	cf, err := gen.ComposeFile(m, sp)
-	if err != nil {
-		return err
+	if res.Layer != "" {
+		fmt.Printf("added %s (stack %s/%s -> image layer %q)\n", name, res.Stack.Lang, res.Stack.Build, res.Layer)
+	} else {
+		fmt.Printf("added %s (stack not detected%s)\n", name, dryNote())
 	}
-	return os.WriteFile(sp.Compose(), []byte(cf), 0o644)
-}
-
-func loadActive() (paths.Space, *config.Manifest, error) {
-	sp, err := activeSpace()
-	if err != nil {
-		return paths.Space{}, nil, err
-	}
-	m, err := config.Load(sp.Manifest())
-	if err != nil {
-		return paths.Space{}, nil, err
-	}
-	return sp, m, nil
+	fmt.Println("manifest updated; run 'dock build' to (re)build the image")
+	return nil
 }
 
 func cmdBuild(args []string) error {
@@ -202,10 +230,8 @@ func cmdBuild(args []string) error {
 	if err := writeGenerated(sp, m); err != nil {
 		return err
 	}
-	fmt.Println("generated", sp.LiteLLM())
-	fmt.Println("generated", sp.Compose())
-	// Validate the compose file. (Per-stack image building lands in M2.)
-	return run("docker", "compose", "-f", sp.Compose(), "config", "-q")
+	fmt.Println("generated:", sp.Dockerfile(), "+", sp.LiteLLM(), "+", sp.Compose())
+	return run("docker", "compose", "-f", sp.Compose(), "build")
 }
 
 func cmdStart(args []string) error {
@@ -246,19 +272,138 @@ func cmdStop(args []string) error {
 	if err != nil {
 		return err
 	}
-	// Named volumes (caches/indexes) persist; use 'down -v' manually to wipe.
 	return run("docker", "compose", "-f", sp.Compose(), "down")
+}
+
+func cmdSync(args []string) error {
+	sp, m, err := loadActive()
+	if err != nil {
+		return err
+	}
+	if len(m.Repos) == 0 {
+		fmt.Println("no repos in this space; add one with 'dock addrepo <url>'")
+		return nil
+	}
+	failed := 0
+	for _, r := range m.Repos {
+		n := repoName(r.URL)
+		fmt.Println("syncing", n)
+		if err := run("git", "-C", filepath.Join(sp.Repos, n), "pull", "--ff-only"); err != nil {
+			fmt.Fprintf(os.Stderr, "  pull failed for %s: %v\n", n, err)
+			failed++
+		}
+	}
+	if failed > 0 {
+		return fmt.Errorf("%d repo(s) failed to sync", failed)
+	}
+	return nil
+}
+
+func cmdSpace(args []string) error {
+	if len(args) < 2 || args[0] != "switch" {
+		return fmt.Errorf("usage: dock space switch <space>")
+	}
+	target := args[1]
+	tp := paths.For(target)
+	if _, err := os.Stat(tp.Manifest()); err != nil {
+		return fmt.Errorf("space %q not found (no %s); run 'dock setup %s' first", target, tp.Manifest(), target)
+	}
+	if cur, err := activeSpace(); err == nil && cur.Name != target {
+		if _, err := os.Stat(cur.Compose()); err == nil {
+			fmt.Println("stopping current space:", cur.Name)
+			_ = run("docker", "compose", "-f", cur.Compose(), "down")
+		}
+	}
+	if err := setActive(target); err != nil {
+		return err
+	}
+	fmt.Printf("active space is now %q (%s)\n", target, tp.Root)
+	return nil
+}
+
+func cmdUpdate(args []string) error {
+	sp, m, err := loadActive()
+	if err != nil {
+		return err
+	}
+	for _, d := range []string{sp.Repos, sp.Vault, sp.Works, sp.Drydock} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			return err
+		}
+	}
+	if err := writeGenerated(sp, m); err != nil {
+		return err
+	}
+	fmt.Println("refreshed space config for", sp.Name, "(regenerated gateway + compose + Dockerfile)")
+	fmt.Println("note: 'dock update' refreshes space config; use 'dock self-update' for the binary")
+	return nil
 }
 
 func cmdForward(args []string) error {
 	if len(args) < 1 || !strings.Contains(args[0], ":") {
 		return fmt.Errorf("usage: dock forward <hostPort>:<containerPort>")
 	}
-	fmt.Printf("ad-hoc forward (%s) lands in M2. For now declare the port in space.yaml 'ports:' and run 'dock start'.\n", args[0])
+	fmt.Printf("ad-hoc forward (%s) lands in a later milestone. For now declare the port in space.yaml 'ports:' and run 'dock start'.\n", args[0])
 	return nil
 }
 
+// --- generation ------------------------------------------------------------
+
+func writeGenerated(sp paths.Space, m *config.Manifest) error {
+	if err := os.MkdirAll(sp.Drydock, 0o755); err != nil {
+		return err
+	}
+	lc, err := gen.LiteLLMConfig(m)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(sp.LiteLLM(), []byte(lc), 0o644); err != nil {
+		return err
+	}
+	cf, err := gen.ComposeFile(m, sp)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(sp.Compose(), []byte(cf), 0o644); err != nil {
+		return err
+	}
+	return os.WriteFile(sp.Dockerfile(), []byte(gen.Dockerfile(m)), 0o644)
+}
+
 // --- helpers ---------------------------------------------------------------
+
+func repoName(url string) string {
+	u := strings.TrimSuffix(strings.TrimRight(url, "/"), ".git")
+	if i := strings.LastIndexAny(u, "/:"); i >= 0 {
+		u = u[i+1:]
+	}
+	return u
+}
+
+func repoKnown(m *config.Manifest, url string) bool {
+	for _, r := range m.Repos {
+		if r.URL == url {
+			return true
+		}
+	}
+	return false
+}
+
+func addUnique(s []string, v string) []string {
+	for _, x := range s {
+		if x == v {
+			return s
+		}
+	}
+	return append(s, v)
+}
+
+func dryNote() string {
+	if dryRun {
+		return " — clone skipped under --dry-run"
+	}
+	return ""
+}
 
 // run executes a command with inherited stdio, or prints it under --dry-run.
 func run(name string, args ...string) error {

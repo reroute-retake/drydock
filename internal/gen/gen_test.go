@@ -52,7 +52,8 @@ func TestComposeFile(t *testing.T) {
 	}
 	for _, want := range []string{
 		"name: drydock-payments",
-		"image: drydock/base:1.x",
+		`image: "drydock-payments:dev"`,
+		"dockerfile: Dockerfile",
 		`OPENAI_URL: "http://gateway:4000/v1"`,
 		"/workspace/repos",
 		"/workspace/vault",
@@ -63,6 +64,25 @@ func TestComposeFile(t *testing.T) {
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("compose missing %q\n---\n%s", want, out)
+		}
+	}
+}
+
+func TestDockerfile(t *testing.T) {
+	m := manifest()
+	m.Image = config.Image{Base: "debian:12-slim", Stacks: []string{"jdk21-maven", "node", "bogus"}}
+	out := Dockerfile(m)
+	for _, want := range []string{
+		"FROM debian:12-slim",
+		"forgecode.dev/cli",
+		"maven",
+		"nodejs npm",
+		"# stack: bogus",
+		"no known layer",
+		"WORKDIR /workspace",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("dockerfile missing %q\n%s", want, out)
 		}
 	}
 }
