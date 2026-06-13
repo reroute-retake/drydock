@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://drydock.dev/schemas/state.schema.json",
+  "title": "drydock ticket state",
+  "description": "Content of works/<ticket>/state.yaml. Drives lifecycle gates (C1) and records model+version per phase (C12).",
+  "type": "object",
+  "required": ["ticket", "space", "current", "phases"],
+  "additionalProperties": false,
+  "properties": {
+    "ticket": { "type": "string" },
+    "space": { "type": "string" },
+    "current": { "$ref": "#/$defs/phase" },
+    "lightweight": { "type": "boolean", "default": false, "description": "Lightweight path enabled (e.g. analyze->develop->ship) for small tickets (D7)." },
+    "task_backend": { "type": "string", "enum": ["prose", "beads"], "default": "prose" },
+    "phases": {
+      "type": "object",
+      "description": "Per-phase state keyed by phase name.",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["phase", "status", "gate"],
+        "additionalProperties": false,
+        "properties": {
+          "phase": { "$ref": "#/$defs/phase" },
+          "status": { "type": "string", "enum": ["pending", "in_progress", "agreed", "done", "skipped"] },
+          "gate": { "type": "string", "enum": ["none", "human"] },
+          "model": { "type": "string" },
+          "model_version": { "type": "string" },
+          "artifacts": { "type": "array", "items": { "type": "string" } },
+          "note": { "type": "string", "description": "Required justification when status is skipped." }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "phase": {
+      "type": "string",
+      "enum": ["analyze", "grill", "plan", "develop", "review", "triage", "test", "ship", "archive"]
+    }
+  }
+}

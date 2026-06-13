@@ -1,0 +1,54 @@
+# Example ticket state — validates against schemas/state.schema.json.
+# This is the index for works/PAY-123/; the artifact files live beside it.
+ticket: PAY-123
+space: payments
+current: develop
+lightweight: false
+task_backend: beads
+
+phases:
+  analyze:
+    phase: analyze
+    status: agreed
+    gate: human
+    model: dock/reason
+    model_version: "2026-05"
+    artifacts: ["01-analysis.md"]
+  grill:
+    phase: grill
+    status: agreed
+    gate: human
+    model: dock/reason
+    artifacts: ["02-grill.md", "02-analysis.grilled.md"]
+  plan:
+    phase: plan
+    status: agreed
+    gate: human
+    model: dock/reason
+    artifacts: ["03-plan.md"]
+  develop:
+    phase: develop
+    status: in_progress
+    gate: none
+    model: dock/code
+    artifacts: ["04-dev-log.md"]
+  review:
+    phase: review
+    status: pending
+    gate: none
+  triage:
+    phase: triage
+    status: pending
+    gate: human
+  test:
+    phase: test
+    status: pending
+    gate: none
+  ship:
+    phase: ship
+    status: pending
+    gate: human
+  archive:
+    phase: archive
+    status: pending
+    gate: none

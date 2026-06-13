@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://drydock.dev/schemas/telemetry-event.schema.json",
+  "title": "drydock telemetry event",
+  "description": "One line of events.jsonl (design doc 7.4). Secrets must never appear in any field (C8).",
+  "type": "object",
+  "required": ["ts", "session_id", "space", "ticket", "event_type"],
+  "additionalProperties": false,
+  "properties": {
+    "ts": { "type": "string", "format": "date-time" },
+    "session_id": { "type": "string" },
+    "space": { "type": "string" },
+    "ticket": { "type": "string" },
+    "phase": { "type": "string" },
+    "skill": { "type": "string" },
+    "event_type": { "type": "string", "enum": ["phase_start", "phase_end", "tool_call", "gate", "failure", "llm_call"] },
+    "tool": { "type": "string" },
+    "duration_ms": { "type": "integer", "minimum": 0 },
+    "status": { "type": "string", "enum": ["ok", "error", "blocked"] },
+    "error": { "type": "string" },
+    "model": { "type": "string" },
+    "model_version": { "type": "string" },
+    "tokens_in": { "type": "integer", "minimum": 0 },
+    "tokens_out": { "type": "integer", "minimum": 0 },
+    "cost_usd": { "type": "number", "minimum": 0 },
+    "meta": { "type": "object", "additionalProperties": { "type": "string" } }
+  }
+}

@@ -1,0 +1,55 @@
+# Example drydock space manifest — validates against schemas/space.schema.json.
+# Single source of truth for the "payments" space. Secrets live ONLY in .env.
+space: payments
+
+vault:
+  repo: git@github.com:your-org/payments-vault.git
+  branch: main
+
+repos:
+  - url: git@github.com:your-org/payments-core.git
+    stack: { lang: java, version: 21, build: maven }
+  - url: git@github.com:your-org/payments-api.git
+    stack: { lang: java, version: 21, build: maven }
+
+image:
+  base: drydock/base:1.x
+  stacks: [jdk21-maven]
+
+# Dev-server ports published host<->container at `dock start` (7B).
+ports: [8080, 9090]
+
+# Space-scoped MCP servers. Keep total active tools <= ~15 (D13).
+# git is native in ForgeCode, so we rely on that + GitHub MCP rather than a git MCP.
+mcp:
+  - { name: github,             type: command, toolsets: [repos, pull_requests, issues], pin: "v1.3.0" }
+  - { name: context7,           type: url,     pin: "v3" }
+  - { name: sequential-thinking, type: command }
+  - { name: serena,             type: command }   # symbol-accurate code intelligence
+
+# Role -> model. Aliases resolved by the LiteLLM gateway (7.2).
+# Note: review uses a DIFFERENT model than develop to decorrelate blind spots (R6).
+models:
+  reason: { provider: anthropic, model: claude-strong-reasoner }
+  code:   { provider: anthropic, model: claude-strong-coder }
+  review: { provider: openai,    model: gpt-strong-reviewer }
+  cheap:  { provider: openai,    model: gpt-small-fast }
+  local:  { provider: ollama,    model: llama3.1, api_base: http://host.docker.internal:11434 }
+
+routing:
+  analyze: reason
+  grill:   reason
+  plan:    reason
+  develop: code
+  review:  review
+  triage:  cheap
+  test:    code
+  ship:    cheap
+  archive: cheap
+
+tooling:
+  tasks: beads        # back the plan task graph with beads (D9); or "prose"
+  precommit: true
+  scanners: [trivy]
+
+principles_ref: vault://principles/payments.md

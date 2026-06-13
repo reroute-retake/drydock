@@ -1,0 +1,15 @@
+# Build output
+/bin/
+
+# Secrets — NEVER commit (P12/C8)
+.env
+spike/.env
+
+# Local task DB (beads stealth mode)
+.beads/
+
+# Per-ticket working artifacts at repo root (examples/works/ is kept on purpose)
+/works/
+
+# Logs / scratch
+*.log

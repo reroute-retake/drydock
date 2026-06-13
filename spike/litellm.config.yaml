@@ -1,0 +1,25 @@
+# LiteLLM gateway config for the M0 spike.
+# Exposes ONE OpenAI-compatible endpoint with two aliases: a hosted and a local
+# model. Clients (ForgeCode) send model="dock/reason" or "dock/local".
+# Replace the concrete model names with ones you have access to.
+model_list:
+  # --- Hosted model (alias: dock/reason) ---
+  - model_name: dock/reason
+    litellm_params:
+      model: anthropic/claude-3-5-sonnet-latest
+      api_key: os.environ/ANTHROPIC_API_KEY
+
+  # --- Local model (alias: dock/local), served by Ollama on the HOST ---
+  # On Linux, host.docker.internal resolves via the compose extra_hosts mapping.
+  # Prereq on the host:  ollama serve  &&  ollama pull llama3.1
+  - model_name: dock/local
+    litellm_params:
+      model: ollama/llama3.1
+      api_base: http://host.docker.internal:11434
+
+litellm_settings:
+  drop_params: true     # tolerate params a local model doesn't support
+  num_retries: 2
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY

@@ -1,0 +1,33 @@
+# M0 spike: prove ForgeCode (OpenAI-compatible) routes through a LiteLLM gateway
+# to a hosted AND a local model. Run from this dir: `docker compose up -d --build`.
+name: drydock-spike
+
+services:
+  gateway:
+    image: ghcr.io/berriai/litellm:main-stable   # pin a digest for real use
+    command: ["--config", "/etc/litellm/config.yaml", "--port", "4000"]
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./litellm.config.yaml:/etc/litellm/config.yaml:ro
+    env_file:
+      - .env                       # ANTHROPIC_API_KEY, LITELLM_MASTER_KEY
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # reach a host Ollama on Linux
+
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      - gateway
+    environment:
+      # Point ForgeCode at the gateway (OpenAI-compatible endpoint).
+      OPENAI_URL: "http://gateway:4000/v1"
+      OPENAI_API_KEY: "${LITELLM_MASTER_KEY}"   # interpolated from ./.env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ../:/workspace/repos/drydock:ro          # mount the repo read-only
+    working_dir: /workspace
+    command: ["sleep", "infinity"]

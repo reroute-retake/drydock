@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://drydock.dev/schemas/space.schema.json",
+  "title": "drydock space manifest",
+  "description": "Single source of truth for a drydock space (design doc 7.1). Secrets live only in .env, never here.",
+  "type": "object",
+  "required": ["space", "vault", "repos", "image", "models", "routing"],
+  "additionalProperties": false,
+  "properties": {
+    "space": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$", "description": "Space name, e.g. payments." },
+    "vault": {
+      "type": "object",
+      "required": ["repo", "branch"],
+      "additionalProperties": false,
+      "properties": {
+        "repo": { "type": "string", "description": "Git URL of the vault (llm-wiki) repo." },
+        "branch": { "type": "string", "default": "main" }
+      }
+    },
+    "repos": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["url"],
+        "additionalProperties": false,
+        "properties": {
+          "url": { "type": "string" },
+          "stack": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "lang": { "type": "string", "examples": ["java", "node", "go", "python"] },
+              "version": { "type": ["string", "number"] },
+              "build": { "type": "string", "examples": ["maven", "gradle", "npm", "pnpm"] }
+            }
+          }
+        }
+      }
+    },
+    "image": {
+      "type": "object",
+      "required": ["base", "stacks"],
+      "additionalProperties": false,
+      "properties": {
+        "base": { "type": "string", "description": "Base image reference, e.g. drydock/base:1.x." },
+        "stacks": { "type": "array", "items": { "type": "string" }, "description": "Per-stack layers to add, e.g. jdk21-maven." }
+      }
+    },
+    "ports": {
+      "type": "array",
+      "items": { "type": "integer", "minimum": 1, "maximum": 65535 },
+      "description": "Dev-server ports published from the container to the host at `dock start` (design doc 7B)."
+    },
+    "mcp": {
+      "type": "array",
+      "description": "Space-scoped MCP servers; keep <= ~15 active tools total (D13).",
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "type": { "type": "string", "enum": ["command", "url"], "default": "command" },
+          "toolsets": { "type": "array", "items": { "type": "string" }, "description": "Optional server-side toolset filter to trim tool count." },
+          "pin": { "type": "string", "description": "Pinned version or image digest (security)." }
+        }
+      }
+    },
+    "models": {
+      "type": "object",
+      "description": "Role -> model. Aliases are resolved by the LiteLLM gateway. Keys referenced by `routing`.",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "required": ["provider", "model"],
+        "additionalProperties": false,
+        "properties": {
+          "provider": { "type": "string", "examples": ["anthropic", "openai", "ollama", "vllm"] },
+          "model": { "type": "string" },
+          "api_base": { "type": "string", "description": "For local/self-hosted models (e.g. http://host.docker.internal:11434)." }
+        }
+      }
+    },
+    "routing": {
+      "type": "object",
+      "description": "Lifecycle phase -> model role (key in `models`). See design doc 7.2.",
+      "additionalProperties": { "type": "string" }
+    },
+    "tooling": {
+      "type": "object",
+      "description": "Per-space, opt-in workflow tooling (design doc 7B).",
+      "additionalProperties": false,
+      "properties": {
+        "tasks": { "type": "string", "enum": ["prose", "beads"], "default": "prose", "description": "Plan task representation backend (D9)." },
+        "precommit": { "type": "boolean", "default": false },
+        "scanners": { "type": "array", "items": { "type": "string" }, "examples": [["trivy"]] }
+      }
+    },
+    "principles_ref": {
+      "type": "string",
+      "description": "Pointer to this space's project principles enforced by review/test/ship (e.g. vault://principles/payments.md)."
+    }
+  }
+}

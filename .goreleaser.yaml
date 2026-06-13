@@ -1,0 +1,56 @@
+# GoReleaser config for the `dock` binary. Validate with: goreleaser check
+# Build a snapshot locally with: goreleaser release --snapshot --clean
+version: 2
+project_name: dock
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: dock
+    main: ./cmd/dock
+    binary: dock
+    env:
+      - CGO_ENABLED=0
+    goos: [linux]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w
+      - -X github.com/reroute-retake/drydock/internal/version.Version={{ .Version }}
+      - -X github.com/reroute-retake/drydock/internal/version.Commit={{ .ShortCommit }}
+      - -X github.com/reroute-retake/drydock/internal/version.Date={{ .Date }}
+
+archives:
+  - id: dock
+    formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: "checksums.txt"
+
+# SBOMs per archive (CycloneDX via syft, if installed).
+sboms:
+  - artifacts: archive
+
+# Linux packages.
+nfpms:
+  - id: dock
+    package_name: dock
+    formats: [deb, rpm]
+    maintainer: "drydock <noreply@example.com>"
+    description: "drydock host-side orchestrator"
+    license: "Apache-2.0"
+    bindir: /usr/bin
+
+# Cosign signing of the checksums file (keyless via GitHub OIDC). Uncomment in CI
+# with `id-token: write` permission:
+# signs:
+#   - cmd: cosign
+#     args: ["sign-blob", "--yes", "--output-signature=${signature}", "${artifact}"]
+#     artifacts: checksum
+
+release:
+  github:
+    owner: reroute-retake
+    name: drydock

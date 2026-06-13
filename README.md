@@ -1,1 +1,62 @@
 # drydock
+
+A container-based, space-scoped engineering environment. `dock` (this CLI) is the
+host-side orchestrator; inside the container, the ForgeCode harness runs a fixed
+lifecycle of skills (`analyze → grill → plan → develop → review → triage → test →
+ship → archive`) with a LiteLLM model gateway and per-ticket artifacts.
+
+> **This is the M0 scaffold.** It establishes the repo structure, the core
+> schemas, the CLI skeleton, the build/release pipeline, and a runnable spike
+> that proves ForgeCode can route through LiteLLM to a hosted **and** a local
+> model. See the design doc for the full architecture and roadmap.
+
+## Layout
+
+```
+cmd/dock/            CLI entry point (M0: version + doctor functional; rest stubbed)
+internal/version/    build-time version (ldflags)
+internal/telemetry/  events.jsonl schema + writer (feeds `retrospect`)
+internal/works/      lifecycle state machine + artifact contract
+schemas/             JSON Schemas: space, state, telemetry-event
+examples/            space.payments.yaml + works/PAY-123/state.yaml
+skills/              metadata-nested SKILL.md template + grill example
+spike/               M0 proof: LiteLLM gateway + dev container + verify.sh
+.goreleaser.yaml     release pipeline (static binary, checksums, SBOM, deb/rpm)
+Makefile             build / install / dev / test / spike
+```
+
+## Quickstart
+
+Requires Go 1.22+ (build) and Docker (spike).
+
+```bash
+# 1. Build & install to a user-owned PATH dir (no root needed)
+make install            # -> ~/.local/bin/dock
+dock version
+dock doctor             # checks docker / forge / git / gateway
+
+# 2. Run the M0 proof (see spike/README.md first to set keys)
+cp spike/.env.example spike/.env   # then edit: add ANTHROPIC_API_KEY
+make spike                          # brings up gateway + dev, runs verify.sh
+make spike-down
+```
+
+## Distribution & self-update (design doc 11A)
+
+- Release artifact: a single static Go binary via GoReleaser (GitHub Releases +
+  `checksums.txt` + SBOM + deb/rpm; cosign optional).
+- `dock self-update` replaces the **binary** from the latest release (verify →
+  atomic rename; graceful if root-owned).
+- `dock update` refreshes a **space's** config/scaffolding — never the binary.
+
+## drydock-in-drydock
+
+Develop drydock inside its own space: `make dev` builds `dock-dev` into
+`~/.local/bin`; drive the workflow with `dock-dev` while stable `dock` keeps
+running. Promote only after `dock-dev version && dock-dev doctor`.
+
+## Status / next (M1)
+
+M0 = structure + schemas + spike. M1 wires real `setup/build/start/shell/stop`,
+manifest parsing (adds `gopkg.in/yaml.v3`), `.env` injection, mounts, the
+LiteLLM sidecar, telemetry capture, and packaging via GoReleaser + `install.sh`.
