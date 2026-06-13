@@ -38,6 +38,18 @@ func TestPickAssets(t *testing.T) {
 	}
 }
 
+func TestSameVersion(t *testing.T) {
+	if !sameVersion("v0.1.0", "0.1.0") {
+		t.Fatal("v0.1.0 should equal 0.1.0")
+	}
+	if sameVersion("v0.2.0", "0.1.0") {
+		t.Fatal("different versions must not be equal")
+	}
+	if sameVersion("", "") {
+		t.Fatal("empty versions must not be considered equal")
+	}
+}
+
 func TestVerifySHA256(t *testing.T) {
 	data := []byte("hello drydock")
 	sum := sha256.Sum256(data)

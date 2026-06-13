@@ -50,6 +50,12 @@ type Options struct {
 	HTTPClient  *http.Client
 }
 
+// normVer drops a leading "v" so a tag (v0.1.0) and a GoReleaser-injected
+// version (0.1.0) compare equal.
+func normVer(s string) string { return strings.TrimPrefix(strings.TrimSpace(s), "v") }
+
+func sameVersion(a, b string) bool { return normVer(a) != "" && normVer(a) == normVer(b) }
+
 // pickAssets selects the platform tarball and the checksums file.
 func pickAssets(assets []Asset, goos, goarch string) (tarball, checksums Asset, err error) {
 	want := fmt.Sprintf("dock_%s_%s.tar.gz", goos, goarch)
@@ -187,7 +193,7 @@ func Run(o Options) (string, error) {
 	if rel.TagName == "" {
 		return "", errors.New("release has no tag")
 	}
-	if !o.Force && rel.TagName == o.Current {
+	if !o.Force && sameVersion(rel.TagName, o.Current) {
 		return "", nil // already up to date
 	}
 	tarball, checksums, err := pickAssets(rel.Assets, runtime.GOOS, runtime.GOARCH)

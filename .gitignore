@@ -1,5 +1,6 @@
 # Build output
 /bin/
+/dist/
 
 # Secrets — NEVER commit (P12/C8)
 .env
