@@ -17,12 +17,19 @@ import (
 	"github.com/reroute-retake/drydock/internal/config"
 	"github.com/reroute-retake/drydock/internal/gen"
 	"github.com/reroute-retake/drydock/internal/paths"
+	"github.com/reroute-retake/drydock/internal/selfupdate"
 	"github.com/reroute-retake/drydock/internal/stack"
 	"github.com/reroute-retake/drydock/internal/telemetry"
 	"github.com/reroute-retake/drydock/internal/version"
 )
 
 var dryRun bool
+
+// GitHub repo that hosts dock releases (used by self-update).
+const (
+	ghOwner = "reroute-retake"
+	ghRepo  = "drydock"
+)
 
 const usage = `dock — drydock host-side orchestrator
 
@@ -41,7 +48,7 @@ Environment:
 
 Maintenance:
   update             Refresh the active space's config/scaffolding (NOT the binary)
-  self-update        Replace the dock binary from the latest release             [stub]
+  self-update        Replace the dock binary from the latest GitHub release (checksum-verified)
   doctor             Diagnose the local environment
   version            Print version
 
@@ -92,7 +99,9 @@ func main() {
 		err = cmdUpdate(args)
 	case "forward":
 		err = cmdForward(args)
-	case "self-update", "run":
+	case "self-update":
+		err = cmdSelfUpdate(args)
+	case "run":
 		stub(cmd, args)
 	default:
 		fmt.Fprintf(os.Stderr, "dock: unknown command %q\n\n", cmd)
@@ -336,6 +345,38 @@ func cmdUpdate(args []string) error {
 	}
 	fmt.Println("refreshed space config for", sp.Name, "(regenerated gateway + compose + Dockerfile)")
 	fmt.Println("note: 'dock update' refreshes space config; use 'dock self-update' for the binary")
+	return nil
+}
+
+func cmdSelfUpdate(args []string) error {
+	var target string
+	force := false
+	for _, a := range args {
+		switch {
+		case a == "--force":
+			force = true
+		case strings.HasPrefix(a, "--version="):
+			target = strings.TrimPrefix(a, "--version=")
+		default:
+			return fmt.Errorf("usage: dock self-update [--force] [--version=<tag>]")
+		}
+	}
+	if dryRun {
+		fmt.Printf("[dry-run] self-update from github.com/%s/%s (current %s)\n", ghOwner, ghRepo, version.Version)
+		return nil
+	}
+	fmt.Println("checking for updates ...")
+	v, err := selfupdate.Run(selfupdate.Options{
+		Owner: ghOwner, Repo: ghRepo, Current: version.Version, Version: target, Force: force,
+	})
+	if err != nil {
+		return err
+	}
+	if v == "" {
+		fmt.Printf("already up to date (%s)\n", version.Version)
+		return nil
+	}
+	fmt.Printf("updated %s -> %s\n", version.Version, v)
 	return nil
 }
 

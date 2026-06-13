@@ -43,6 +43,13 @@ make spike-down
 
 ## Distribution & self-update (design doc 11A)
 
+Install (Linux):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/reroute-retake/drydock/main/install.sh | sh
+dock self-update     # later, to upgrade in place
+```
+
 - Release artifact: a single static Go binary via GoReleaser (GitHub Releases +
   `checksums.txt` + SBOM + deb/rpm; cosign optional).
 - `dock self-update` replaces the **binary** from the latest release (verify →
@@ -65,8 +72,11 @@ running. Promote only after `dock-dev version && dock-dev doctor`.
 - **M2** — `dock addrepo` (clone + stack detection → per-stack image layers),
   `dock sync`, `dock space switch`, `dock update`; `build` now builds a generated
   per-stack Dockerfile. ✅
-- **M3 (next)** — `dock self-update` + `install.sh`; ad-hoc `dock forward`;
-  lifecycle skills (`analyze`/`plan`/`develop`/`ship`) with the artifact contract.
+- **M3** — `dock self-update` (download latest release, verify checksum, atomic
+  replace, graceful on root-owned) and `install.sh`, both consuming GoReleaser
+  artifacts. ✅
+- **M4 (next)** — lifecycle skills (`analyze`/`plan`/`develop`/`ship`) over the
+  works/ artifact contract; ad-hoc `dock forward`.
 
 Try it (no Docker needed to preview):
 

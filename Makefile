@@ -9,7 +9,7 @@ LDFLAGS := -s -w \
   -X $(MODULE)/internal/version.Commit=$(COMMIT) \
   -X $(MODULE)/internal/version.Date=$(DATE)
 
-.PHONY: build install dev test vet fmt doctor spike spike-down release-check clean
+.PHONY: build install dev test vet fmt doctor spike spike-down release-check snapshot clean
 
 build: ; go build -ldflags "$(LDFLAGS)" -o bin/dock ./cmd/dock
 
@@ -34,5 +34,7 @@ spike: ; cd spike && docker compose up -d --build && docker compose exec dev bas
 spike-down: ; cd spike && docker compose down -v
 
 release-check: ; goreleaser check
+
+snapshot: ; goreleaser release --snapshot --clean
 
 clean: ; rm -rf bin
