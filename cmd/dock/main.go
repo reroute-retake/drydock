@@ -943,6 +943,15 @@ func writeGenerated(sp paths.Space, m *config.Manifest) error {
 	if err := os.WriteFile(filepath.Join(sp.Drydock, "drydock_logger.py"), []byte(gen.LiteLLMLogger()), 0o644); err != nil {
 		return err
 	}
+	for rel, content := range gen.ForgeConfig(m) {
+		p := filepath.Join(sp.ForgeDir(), rel)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			return err
+		}
+		if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+			return err
+		}
+	}
 	return lockfile.Build(m, version.Version).Save(sp.Lock())
 }
 

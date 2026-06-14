@@ -101,7 +101,9 @@ The M0–M6 roadmap and the H1–H3 hardening pass are all implemented. **`dock 
 <skill> <ticket>`** closes the execution loop: it enforces the phase gate, selects
 the phase's routed model, and emits `phase_start`/`phase_end` telemetry; the
 LiteLLM gateway logs per-call events into the session via a generated callback
-(`drydock_logger.py`), so `retrospect` has real data.
+(`drydock_logger.py`), so `retrospect` has real data. dock also generates
+**ForgeCode per-phase agents from `routing:`** (each phase uses its assigned
+model; `review` differs from `develop`), mounted at `/workspace/.forge/agents`.
 
 Try it (no Docker needed to preview):
 

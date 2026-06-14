@@ -64,6 +64,8 @@ func TestComposeFile(t *testing.T) {
 		"/workspace/telemetry:ro",
 		"drydock_logger.py:/etc/litellm/drydock_logger.py",
 		`DRYDOCK_TELEMETRY_DIR: "/telemetry"`,
+		"/workspace/forge.yaml:ro",
+		"/workspace/.forge/agents:ro",
 		`"8080:8080"`,
 		`"9090:9090"`,
 		"host.docker.internal:host-gateway",
@@ -93,6 +95,35 @@ func TestDockerfile(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Fatalf("dockerfile missing %q\n%s", want, out)
 		}
+	}
+}
+
+func TestForgeConfig(t *testing.T) {
+	m := &config.Manifest{
+		Space: "payments",
+		Models: map[string]config.Model{
+			"reason": {Provider: "anthropic", Model: "r"},
+			"code":   {Provider: "anthropic", Model: "c"},
+			"rev":    {Provider: "openai", Model: "v"},
+		},
+		Routing: map[string]string{"develop": "code", "review": "rev", "analyze": "reason"},
+	}
+	fc := ForgeConfig(m)
+	if len(fc) != 1+len(lifecycleSkills) {
+		t.Fatalf("expected forge.yaml + %d agents, got %d", len(lifecycleSkills), len(fc))
+	}
+	if !strings.Contains(fc["forge.yaml"], "model: code") {
+		t.Fatalf("forge.yaml default model should be develop's (code):\n%s", fc["forge.yaml"])
+	}
+	if !strings.Contains(fc["agents/develop.md"], "model: code") {
+		t.Fatalf("develop agent model:\n%s", fc["agents/develop.md"])
+	}
+	if !strings.Contains(fc["agents/review.md"], "model: rev") || strings.Contains(fc["agents/review.md"], "model: code") {
+		t.Fatalf("review must use its own model, not develop's (R6):\n%s", fc["agents/review.md"])
+	}
+	// An unrouted (meta) skill falls back to the default role.
+	if !strings.Contains(fc["agents/retrospect.md"], "model: code") {
+		t.Fatalf("retrospect should default to %q:\n%s", "code", fc["agents/retrospect.md"])
 	}
 }
 
