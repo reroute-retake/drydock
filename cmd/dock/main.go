@@ -60,6 +60,7 @@ Tickets (lifecycle state — the works/ artifact contract):
   work status [t]    Show a ticket's phase state
   work set <phase> <status> [--model m --note n --artifact f]   Record phase progress
   archive [ticket]   Copy a ticket's artifacts to the vault inbox and run vault:ingest [--clean]
+  run <skill> [t]    Run a skill in the harness with the phase's routed model (gated + telemetered)
 
 Self-improvement (telemetry + human-gated skill proposals):
   telemetry [--ticket t] [--json]   Summarize captured session telemetry (input to retrospect)
@@ -132,7 +133,7 @@ func main() {
 	case "self-update":
 		err = cmdSelfUpdate(args)
 	case "run":
-		stub(cmd, args)
+		err = cmdRun(args)
 	default:
 		fmt.Fprintf(os.Stderr, "dock: unknown command %q\n\n", cmd)
 		fmt.Print(usage)
@@ -841,6 +842,73 @@ func printIssues(is []skillcheck.Issue) {
 	}
 }
 
+func forgeArgs(skill, model, ticket string) []string {
+	// Integration point with ForgeCode: pick the routed model and invoke the
+	// skill for this ticket. Adjust flags to match the installed ForgeCode CLI.
+	prompt := "Run the " + skill + " skill for ticket " + ticket + " (see works/" + ticket + "/)."
+	return []string{"forge", "-m", model, prompt}
+}
+
+func cmdRun(args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("usage: dock run <skill> [ticket]")
+	}
+	skill := args[0]
+	sp, m, err := loadActive()
+	if err != nil {
+		return err
+	}
+	ticket, err := resolveTicket(sp, args[1:])
+	if err != nil {
+		return err
+	}
+	phase := works.Phase(skill)
+	role := skill
+	if r, ok := m.Routing[skill]; ok {
+		role = r
+	}
+	statePath := filepath.Join(sp.Works, ticket, "state.yaml")
+	if works.IsPhase(phase) {
+		st, err := works.Load(statePath)
+		if err != nil {
+			return fmt.Errorf("load ticket state (%s): %w", ticket, err)
+		}
+		if !st.CanEnter(phase) {
+			return fmt.Errorf("gate: cannot run %q yet — a prior phase is incomplete (see 'dock work status %s')", skill, ticket)
+		}
+		if err := st.Mark(phase, works.StatusInProgress, role, ""); err == nil {
+			_ = st.Save(statePath)
+		}
+	}
+	runID := time.Now().UTC().Format("20060102T150405Z")
+	sdir := paths.SessionDir(sp.Name, ticket, runID)
+	sess, serr := telemetry.StartSession(sdir, sp.Name, ticket, runID,
+		map[string]string{"skill": skill, "phase": string(phase), "model": role})
+	if serr != nil {
+		fmt.Fprintln(os.Stderr, "warning: telemetry:", serr)
+	}
+	fmt.Printf("run: skill=%s phase=%s model=%s ticket=%s\n", skill, phase, role, ticket)
+	start := time.Now()
+	cargs := append([]string{"compose", "-f", sp.Compose(), "exec", "dev"}, forgeArgs(skill, role, ticket)...)
+	runErr := run("docker", cargs...)
+	status := "ok"
+	if runErr != nil {
+		status = "error"
+	}
+	if sess != nil {
+		_ = sess.Log(telemetry.Event{
+			Type: telemetry.PhaseEnd, Phase: string(phase), Skill: skill,
+			Status: status, DurationMS: time.Since(start).Milliseconds(),
+			Meta: map[string]string{"model": role},
+		})
+	}
+	if runErr != nil {
+		return runErr
+	}
+	fmt.Printf("done: %s — record the outcome with 'dock work set %s <status>'\n", skill, skill)
+	return nil
+}
+
 func cmdForward(args []string) error {
 	if len(args) < 1 || !strings.Contains(args[0], ":") {
 		return fmt.Errorf("usage: dock forward <hostPort>:<containerPort>")
@@ -870,6 +938,9 @@ func writeGenerated(sp paths.Space, m *config.Manifest) error {
 		return err
 	}
 	if err := os.WriteFile(sp.Dockerfile(), []byte(gen.Dockerfile(m)), 0o644); err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(sp.Drydock, "drydock_logger.py"), []byte(gen.LiteLLMLogger()), 0o644); err != nil {
 		return err
 	}
 	return lockfile.Build(m, version.Version).Save(sp.Lock())

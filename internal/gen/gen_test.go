@@ -35,6 +35,7 @@ func TestLiteLLMConfig(t *testing.T) {
 		"model_name: local",
 		"api_base: http://host.docker.internal:11434",
 		"master_key: os.environ/LITELLM_MASTER_KEY",
+		`callbacks: ["drydock_logger.instance"]`,
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("litellm config missing %q\n---\n%s", want, out)
@@ -61,6 +62,8 @@ func TestComposeFile(t *testing.T) {
 		"/workspace/vault",
 		"/workspace/works",
 		"/workspace/telemetry:ro",
+		"drydock_logger.py:/etc/litellm/drydock_logger.py",
+		`DRYDOCK_TELEMETRY_DIR: "/telemetry"`,
 		`"8080:8080"`,
 		`"9090:9090"`,
 		"host.docker.internal:host-gateway",
@@ -89,6 +92,15 @@ func TestDockerfile(t *testing.T) {
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("dockerfile missing %q\n%s", want, out)
+		}
+	}
+}
+
+func TestLiteLLMLogger(t *testing.T) {
+	src := LiteLLMLogger()
+	for _, want := range []string{"CustomLogger", "events.jsonl", "llm_call", "instance = DrydockLogger()"} {
+		if !strings.Contains(src, want) {
+			t.Fatalf("logger source missing %q", want)
 		}
 	}
 }

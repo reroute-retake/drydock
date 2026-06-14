@@ -64,6 +64,10 @@ type State struct {
 	Phases      map[Phase]PhaseState `json:"phases" yaml:"phases"`
 }
 
+// IsPhase reports whether p is one of the gated lifecycle phases (in Order).
+// Meta-skills like handoff/retrospect/hindsight are not phases and aren't gated.
+func IsPhase(p Phase) bool { return index(p) >= 0 }
+
 func index(p Phase) int {
 	for i, q := range Order {
 		if q == p {

@@ -97,7 +97,11 @@ All M0–M6 milestones are implemented. **Hardening pass (in progress):**
   `metadata.version` bumped vs the installed skill); `dock skill check` reports
   issues and `dock skill apply` is gated on them (`--force` overrides). ✅
 
-The M0–M6 roadmap and the H1–H3 hardening pass are all implemented.
+The M0–M6 roadmap and the H1–H3 hardening pass are all implemented. **`dock run
+<skill> <ticket>`** closes the execution loop: it enforces the phase gate, selects
+the phase's routed model, and emits `phase_start`/`phase_end` telemetry; the
+LiteLLM gateway logs per-call events into the session via a generated callback
+(`drydock_logger.py`), so `retrospect` has real data.
 
 Try it (no Docker needed to preview):
 
