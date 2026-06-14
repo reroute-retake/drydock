@@ -23,6 +23,8 @@ export DRYDOCK_STATE="$itroot/state"
 SPACE="itest"
 KEY="sk-itest"
 COMPOSE="$DRYDOCK_HOME/$SPACE/.drydock/compose.yaml"
+ENVFILE="$DRYDOCK_HOME/$SPACE/.env"
+dc() { if [ -f "$ENVFILE" ]; then docker compose --env-file "$ENVFILE" -f "$COMPOSE" "$@"; else docker compose -f "$COMPOSE" "$@"; fi; }
 
 pass=0 fail=0 warn=0
 ok()   { echo "  [ok]   $1"; pass=$((pass + 1)); }
@@ -31,7 +33,7 @@ note() { echo "  [warn] $1"; warn=$((warn + 1)); }
 
 cleanup() {
   echo "== teardown =="
-  [ -f "$COMPOSE" ] && docker compose -f "$COMPOSE" down -v >/dev/null 2>&1
+  [ -f "$COMPOSE" ] && dc down -v >/dev/null 2>&1
   rm -rf "$itroot"
 }
 trap cleanup EXIT
@@ -108,12 +110,12 @@ else
 fi
 
 echo "== ForgeCode in dev points at the gateway =="
-if docker compose -f "$COMPOSE" exec -T dev sh -lc 'printf %s "$OPENAI_URL" | grep -q "gateway:4000"'; then
+if dc exec -T dev sh -lc 'printf %s "$OPENAI_URL" | grep -q "gateway:4000"'; then
   ok "dev OPENAI_URL -> gateway:4000"
 else
   bad "OPENAI_URL not pointing at the gateway in dev"
 fi
-if docker compose -f "$COMPOSE" exec -T dev sh -lc 'command -v forge >/dev/null'; then
+if dc exec -T dev sh -lc 'command -v forge >/dev/null'; then
   ok "forge installed in dev"
 else
   note "forge not installed in dev (installer may have changed; see spike/Dockerfile)"

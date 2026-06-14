@@ -271,7 +271,7 @@ func cmdBuild(args []string) error {
 		return err
 	}
 	fmt.Println("generated:", sp.Dockerfile(), "+", sp.LiteLLM(), "+", sp.Compose())
-	return run("docker", "compose", "-f", sp.Compose(), "build")
+	return run("docker", append(composeBase(sp), "build")...)
 }
 
 func cmdStart(args []string) error {
@@ -304,7 +304,7 @@ func cmdStart(args []string) error {
 			return fmt.Errorf("host port(s) already in use: %v — run 'dock ps', stop a space, or change ports/gateway_port in space.yaml", busy)
 		}
 	}
-	if err := run("docker", "compose", "-f", sp.Compose(), "up", "-d"); err != nil {
+	if err := run("docker", append(composeBase(sp), "up", "-d")...); err != nil {
 		return err
 	}
 	fmt.Printf("gateway:  http://localhost:%d/v1\n", gw)
@@ -321,7 +321,7 @@ func cmdShell(args []string) error {
 	if err != nil {
 		return err
 	}
-	return run("docker", "compose", "-f", sp.Compose(), "exec", "dev", "bash")
+	return run("docker", append(composeBase(sp), "exec", "dev", "bash")...)
 }
 
 func cmdStop(args []string) error {
@@ -329,7 +329,7 @@ func cmdStop(args []string) error {
 	if err != nil {
 		return err
 	}
-	return run("docker", "compose", "-f", sp.Compose(), "down")
+	return run("docker", append(composeBase(sp), "down")...)
 }
 
 func cmdSync(args []string) error {
@@ -378,7 +378,7 @@ func cmdSpace(args []string) error {
 		if cur, err := activeSpace(); err == nil && cur.Name != target {
 			if _, err := os.Stat(cur.Compose()); err == nil {
 				fmt.Println("stopping current space:", cur.Name)
-				_ = run("docker", "compose", "-f", cur.Compose(), "down")
+				_ = run("docker", append(composeBase(cur), "down")...)
 			}
 		}
 	}
@@ -889,7 +889,8 @@ func cmdRun(args []string) error {
 	}
 	fmt.Printf("run: skill=%s phase=%s model=%s ticket=%s\n", skill, phase, role, ticket)
 	start := time.Now()
-	cargs := append([]string{"compose", "-f", sp.Compose(), "exec", "dev"}, forgeArgs(skill, role, ticket)...)
+	cargs := append(composeBase(sp), "exec", "dev")
+	cargs = append(cargs, forgeArgs(skill, role, ticket)...)
 	runErr := run("docker", cargs...)
 	status := "ok"
 	if runErr != nil {
@@ -988,6 +989,17 @@ func dryNote() string {
 		return " — clone skipped under --dry-run"
 	}
 	return ""
+}
+
+// composeBase returns the leading `docker compose` args for a space, passing the
+// space's .env as the interpolation env-file so ${LITELLM_MASTER_KEY} et al.
+// resolve (env_file: is NOT used for interpolation — only for container env).
+func composeBase(sp paths.Space) []string {
+	args := []string{"compose"}
+	if _, err := os.Stat(sp.Env()); err == nil {
+		args = append(args, "--env-file", sp.Env())
+	}
+	return append(args, "-f", sp.Compose())
 }
 
 // run executes a command with inherited stdio, or prints it under --dry-run.
