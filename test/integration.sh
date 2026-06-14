@@ -38,9 +38,23 @@ trap cleanup EXIT
 
 command -v docker >/dev/null || { echo "docker is required"; exit 1; }
 
-echo "== build dock =="
-make -C "$here" build >/dev/null || { echo "go build failed"; exit 1; }
-DOCK="$here/bin/dock"
+echo "== resolve dock (build from this checkout) =="
+if [ -n "${DOCK:-}" ]; then
+  ok "using DOCK=$DOCK"
+elif command -v go >/dev/null 2>&1; then
+  make -C "$here" build >/dev/null || { echo "go build failed"; exit 1; }
+  DOCK="$here/bin/dock"
+  ok "built dock from source ($(go version 2>/dev/null | awk '{print $3}'))"
+else
+  cat <<'MSG'
+  [FAIL] Go not found on PATH — needed to build the current dock.
+         - install Go (https://go.dev/dl), ensure its bin dir is on PATH, re-run
+         - or, if you built dock elsewhere:  DOCK=/path/to/dock make integration
+         (An install.sh-installed v0.1.0 dock predates the gateway telemetry
+          callback and will fail that check — build from this checkout.)
+MSG
+  exit 1
+fi
 
 echo "== scaffold throwaway space =="
 rm -rf "$itroot"
