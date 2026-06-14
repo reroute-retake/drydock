@@ -92,7 +92,12 @@ All M0–M6 milestones are implemented. **Hardening pass (in progress):**
   Dockerfile, a base-image digest in `image.base`, a generated `.drydock/lock.yaml`
   (dock + ForgeCode versions, base image, MCP pins, stacks), and resolved versions
   recorded in each session's `session.json`. ✅
-- **H3** — an eval harness that validates/scores skill proposals before `apply`. *(next)*
+- **H3** — a skill-proposal eval harness: `internal/skillcheck` validates a proposed
+  `SKILL.md` (frontmatter, name-matches-dir, description length, body size,
+  `metadata.version` bumped vs the installed skill); `dock skill check` reports
+  issues and `dock skill apply` is gated on them (`--force` overrides). ✅
+
+The M0–M6 roadmap and the H1–H3 hardening pass are all implemented.
 
 Try it (no Docker needed to preview):
 

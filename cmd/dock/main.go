@@ -23,6 +23,7 @@ import (
 	"github.com/reroute-retake/drydock/internal/ports"
 	"github.com/reroute-retake/drydock/internal/proposal"
 	"github.com/reroute-retake/drydock/internal/selfupdate"
+	"github.com/reroute-retake/drydock/internal/skillcheck"
 	"github.com/reroute-retake/drydock/internal/stack"
 	"github.com/reroute-retake/drydock/internal/telemetry"
 	"github.com/reroute-retake/drydock/internal/vault"
@@ -63,7 +64,7 @@ Tickets (lifecycle state — the works/ artifact contract):
 Self-improvement (telemetry + human-gated skill proposals):
   telemetry [--ticket t] [--json]   Summarize captured session telemetry (input to retrospect)
   skill propose <skill> --content <file> [--source s --rationale r]   Propose a skill change (pending)
-  skill list | show <id> | apply <id> [--to dir] | reject <id>        Review/apply proposals (human gate)
+  skill list | show <id> | check <id> | apply <id> [--to dir --force] | reject <id>   Review/validate/apply proposals
 
 Maintenance:
   update             Refresh the active space's config/scaffolding (NOT the binary)
@@ -743,9 +744,9 @@ func cmdSkill(args []string) error {
 			p.ID, p.Skill, p.Source, p.Status, p.Rationale, content)
 		return nil
 
-	case "apply":
+	case "check":
 		if len(args) < 2 {
-			return fmt.Errorf("usage: dock skill apply <id> [--to <skills-dir>]")
+			return fmt.Errorf("usage: dock skill check <id> [--to <skills-dir>]")
 		}
 		id := args[1]
 		to := "skills"
@@ -757,16 +758,50 @@ func cmdSkill(args []string) error {
 				}
 			}
 		}
-		p, _, err := proposal.Load(pdir, id)
+		p, content, err := proposal.Load(pdir, id)
 		if err != nil {
 			return err
+		}
+		issues := skillcheck.Check(content, p.Skill, loadCurrentSkill(to, p.Skill))
+		printIssues(issues)
+		if skillcheck.HasErrors(issues) {
+			return fmt.Errorf("validation failed for %s", id)
+		}
+		fmt.Println("ok — passes validation")
+		return nil
+
+	case "apply":
+		if len(args) < 2 {
+			return fmt.Errorf("usage: dock skill apply <id> [--to <skills-dir>] [--force]")
+		}
+		id := args[1]
+		to, force := "skills", false
+		fl := args[2:]
+		for i := 0; i < len(fl); i++ {
+			switch fl[i] {
+			case "--to":
+				if i++; i < len(fl) {
+					to = fl[i]
+				}
+			case "--force":
+				force = true
+			}
+		}
+		p, content, err := proposal.Load(pdir, id)
+		if err != nil {
+			return err
+		}
+		issues := skillcheck.Check(content, p.Skill, loadCurrentSkill(to, p.Skill))
+		printIssues(issues)
+		if skillcheck.HasErrors(issues) && !force {
+			return fmt.Errorf("refusing to apply %s: validation errors above (use --force to override)", id)
 		}
 		target := filepath.Join(to, p.Skill, "SKILL.md")
 		if err := proposal.Apply(pdir, id, target); err != nil {
 			return err
 		}
 		fmt.Printf("applied %s -> %s\n", id, target)
-		fmt.Println("review the change, then commit it (the SKILL.md should carry a bumped metadata.version)")
+		fmt.Println("review the change, then commit it")
 		return nil
 
 	case "reject":
@@ -781,6 +816,28 @@ func cmdSkill(args []string) error {
 
 	default:
 		return fmt.Errorf("usage: dock skill <propose|list|show|apply|reject> ...")
+	}
+}
+
+func loadCurrentSkill(dir, skill string) *skillcheck.SkillDoc {
+	b, err := os.ReadFile(filepath.Join(dir, skill, "SKILL.md"))
+	if err != nil {
+		return nil
+	}
+	d, err := skillcheck.Parse(string(b))
+	if err != nil {
+		return nil
+	}
+	return &d
+}
+
+func printIssues(is []skillcheck.Issue) {
+	if len(is) == 0 {
+		fmt.Println("  no issues")
+		return
+	}
+	for _, i := range is {
+		fmt.Printf("  [%s] %s\n", i.Level, i.Msg)
 	}
 }
 
