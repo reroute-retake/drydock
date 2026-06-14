@@ -40,10 +40,16 @@ type Repo struct {
 	Stack Stack  `yaml:"stack,omitempty"`
 }
 
-// Image is the container image strategy (base + per-stack layers).
+// Image is the container image strategy (base + per-stack layers). Pin the base
+// by digest for reproducibility, e.g. base: debian:12-slim@sha256:...
 type Image struct {
 	Base   string   `yaml:"base"`
 	Stacks []string `yaml:"stacks"`
+}
+
+// Forge pins the ForgeCode harness version (empty = latest at build time).
+type Forge struct {
+	Version string `yaml:"version,omitempty"`
 }
 
 // MCP is a space-scoped MCP server entry.
@@ -74,6 +80,7 @@ type Manifest struct {
 	Vault         Vault             `yaml:"vault"`
 	Repos         []Repo            `yaml:"repos"`
 	Image         Image             `yaml:"image"`
+	Forge         Forge             `yaml:"forge,omitempty"`
 	Ports         []int             `yaml:"ports,omitempty"`
 	GatewayPort   int               `yaml:"gateway_port,omitempty"` // host port for the gateway; 0 = derive per-space
 	MCP           []MCP             `yaml:"mcp,omitempty"`
@@ -156,9 +163,11 @@ vault:
   branch: main
 repos: []            # add with: dock addrepo <git-url>
 image:
-  base: debian:12-slim
+  base: debian:12-slim   # pin by digest for reproducibility: debian:12-slim@sha256:...
   stacks: []
-ports: []            # dev-server ports published at 'dock start'
+forge:
+  version: ""            # pin a ForgeCode version (e.g. v1.2.3); empty = latest
+ports: []                # dev-server ports published at 'dock start'
 mcp:
   - { name: github, type: command }
   - { name: context7, type: url }

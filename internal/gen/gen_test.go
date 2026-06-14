@@ -93,6 +93,17 @@ func TestDockerfile(t *testing.T) {
 	}
 }
 
+func TestDockerfileForgePin(t *testing.T) {
+	m := manifest()
+	if strings.Contains(Dockerfile(m), "FORGE_VERSION=") {
+		t.Fatal("unpinned manifest should not set FORGE_VERSION")
+	}
+	m.Forge = config.Forge{Version: "v1.2.3"}
+	if !strings.Contains(Dockerfile(m), "FORGE_VERSION=v1.2.3") {
+		t.Fatalf("expected forge pin in Dockerfile:\n%s", Dockerfile(m))
+	}
+}
+
 func TestComposeNoDevPorts(t *testing.T) {
 	m := manifest()
 	m.Ports = nil

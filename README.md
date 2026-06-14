@@ -88,8 +88,10 @@ All M0–M6 milestones are implemented. **Hardening pass (in progress):**
 - **H1** — multi-space concurrency: a per-space gateway host port, a port-conflict
   pre-check on `dock start`, `dock ps`, and non-stopping `dock space switch`
   (concurrent by default; `--stop` to stop the previous). ✅
-- **H2** — version pinning + reproducibility (pin ForgeCode + base-image digest;
-  `.drydock/lock.yaml`; record versions per session). *(next)*
+- **H2** — version pinning + reproducibility: a `forge.version` pin baked into the
+  Dockerfile, a base-image digest in `image.base`, a generated `.drydock/lock.yaml`
+  (dock + ForgeCode versions, base image, MCP pins, stacks), and resolved versions
+  recorded in each session's `session.json`. ✅
 - **H3** — an eval harness that validates/scores skill proposals before `apply`. *(next)*
 
 Try it (no Docker needed to preview):

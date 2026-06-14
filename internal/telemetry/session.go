@@ -18,9 +18,10 @@ type Session struct {
 	w      *Writer
 }
 
-// StartSession creates the session dir, writes session.json, and records a
+// StartSession creates the session dir, writes session.json (including any
+// extra metadata such as resolved versions, for reproducibility), and records a
 // phase_start marker. The host session dir is the input to `retrospect`.
-func StartSession(dir, space, ticket, id string) (*Session, error) {
+func StartSession(dir, space, ticket, id string, extra map[string]string) (*Session, error) {
 	w, err := NewWriter(dir)
 	if err != nil {
 		return nil, err
@@ -32,10 +33,17 @@ func StartSession(dir, space, ticket, id string) (*Session, error) {
 		"ticket":     ticket,
 		"started_at": time.Now().UTC().Format(time.RFC3339),
 	}
+	for k, v := range extra {
+		meta[k] = v
+	}
 	if b, err := json.MarshalIndent(meta, "", "  "); err == nil {
 		_ = os.WriteFile(filepath.Join(dir, "session.json"), b, 0o644)
 	}
-	return s, s.Log(Event{Type: PhaseStart, Meta: map[string]string{"note": "session start"}})
+	ev := map[string]string{"note": "session start"}
+	for k, v := range extra {
+		ev[k] = v
+	}
+	return s, s.Log(Event{Type: PhaseStart, Meta: ev})
 }
 
 // Log records an event, filling in the session's identifiers.

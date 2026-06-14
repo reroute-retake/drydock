@@ -18,6 +18,7 @@ import (
 
 	"github.com/reroute-retake/drydock/internal/config"
 	"github.com/reroute-retake/drydock/internal/gen"
+	"github.com/reroute-retake/drydock/internal/lockfile"
 	"github.com/reroute-retake/drydock/internal/paths"
 	"github.com/reroute-retake/drydock/internal/ports"
 	"github.com/reroute-retake/drydock/internal/proposal"
@@ -281,7 +282,9 @@ func cmdStart(args []string) error {
 	}
 	session := time.Now().UTC().Format("20060102T150405Z")
 	sdir := paths.SessionDir(sp.Name, "_session", session)
-	if _, err := telemetry.StartSession(sdir, sp.Name, "_session", session); err != nil {
+	lk := lockfile.Build(m, version.Version)
+	vmeta := map[string]string{"dock_version": lk.DockVersion, "image_base": lk.ImageBase, "forge_version": lk.ForgeVersion}
+	if _, err := telemetry.StartSession(sdir, sp.Name, "_session", session, vmeta); err != nil {
 		fmt.Fprintln(os.Stderr, "warning: could not start telemetry session:", err)
 	}
 	gw := gen.GatewayHostPort(m)
@@ -809,7 +812,10 @@ func writeGenerated(sp paths.Space, m *config.Manifest) error {
 	if err := os.WriteFile(sp.Compose(), []byte(cf), 0o644); err != nil {
 		return err
 	}
-	return os.WriteFile(sp.Dockerfile(), []byte(gen.Dockerfile(m)), 0o644)
+	if err := os.WriteFile(sp.Dockerfile(), []byte(gen.Dockerfile(m)), 0o644); err != nil {
+		return err
+	}
+	return lockfile.Build(m, version.Version).Save(sp.Lock())
 }
 
 // --- helpers ---------------------------------------------------------------
