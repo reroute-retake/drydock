@@ -20,6 +20,7 @@ import (
 	"github.com/reroute-retake/drydock/internal/selfupdate"
 	"github.com/reroute-retake/drydock/internal/stack"
 	"github.com/reroute-retake/drydock/internal/telemetry"
+	"github.com/reroute-retake/drydock/internal/vault"
 	"github.com/reroute-retake/drydock/internal/version"
 	"github.com/reroute-retake/drydock/internal/works"
 )
@@ -51,6 +52,7 @@ Tickets (lifecycle state — the works/ artifact contract):
   work new <ticket>  Scaffold a ticket's works/ folder (ticket.md, state.yaml) and make it active
   work status [t]    Show a ticket's phase state
   work set <phase> <status> [--model m --note n --artifact f]   Record phase progress
+  archive [ticket]   Copy a ticket's artifacts to the vault inbox and run vault:ingest [--clean]
 
 Maintenance:
   update             Refresh the active space's config/scaffolding (NOT the binary)
@@ -105,6 +107,8 @@ func main() {
 		err = cmdUpdate(args)
 	case "work":
 		err = cmdWork(args)
+	case "archive":
+		err = cmdArchive(args)
 	case "forward":
 		err = cmdForward(args)
 	case "self-update":
@@ -497,6 +501,65 @@ func printStatus(st *works.State) {
 		}
 		fmt.Printf("  %-9s %-12s%s %s\n", p, ps.Status, gate, extra)
 	}
+}
+
+func cmdArchive(args []string) error {
+	clean := false
+	var rest []string
+	for _, a := range args {
+		if a == "--clean" {
+			clean = true
+		} else {
+			rest = append(rest, a)
+		}
+	}
+	sp, err := activeSpace()
+	if err != nil {
+		return err
+	}
+	ticket, err := resolveTicket(sp, rest)
+	if err != nil {
+		return err
+	}
+	src := filepath.Join(sp.Works, ticket)
+	statePath := filepath.Join(src, "state.yaml")
+	st, err := works.Load(statePath)
+	if err != nil {
+		return err
+	}
+	if st.Phases[works.Ship].Status != works.StatusDone {
+		fmt.Fprintf(os.Stderr, "warning: ship is %q (not done) for %s — archiving anyway\n", st.Phases[works.Ship].Status, ticket)
+	}
+	if dryRun {
+		fmt.Printf("[dry-run] copy %s -> %s/inbox/%s, then run vault:ingest\n", src, sp.Vault, ticket)
+		return nil
+	}
+	inbox, err := vault.Archive(src, sp.Vault, ticket)
+	if err != nil {
+		return err
+	}
+	_ = st.Mark(works.Archive, works.StatusDone, "", "", "vault:inbox/"+ticket)
+	if err := st.Save(statePath); err != nil {
+		return err
+	}
+	fmt.Println("staged artifacts ->", inbox)
+	if hook, ok := vault.IngestHook(sp.Vault); ok {
+		fmt.Println("running vault ingest hook:", hook)
+		if err := run(hook, inbox); err != nil {
+			return fmt.Errorf("vault ingest hook failed: %w", err)
+		}
+	} else {
+		fmt.Println("no <vault>/bin/ingest hook — run the vault:ingest skill on the inbox (the vault project owns ingestion; design doc 8)")
+	}
+	if clean {
+		if err := os.RemoveAll(src); err != nil {
+			return err
+		}
+		_ = os.Remove(filepath.Join(sp.Drydock, "active_ticket"))
+		fmt.Println("cleaned", src)
+	}
+	fmt.Printf("archived %s\n", ticket)
+	return nil
 }
 
 func cmdForward(args []string) error {

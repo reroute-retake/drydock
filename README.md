@@ -77,8 +77,11 @@ running. Promote only after `dock-dev version && dock-dev doctor`.
   artifacts. ✅
 - **M4** — works/ artifact contract loader/writer + `dock work new/status/set`;
   `analyze`/`plan`/`develop`/`ship` SKILL.md files over the contract. ✅
-- **M5 (next)** — `grill`/`review`/`triage`/`test` skills + gates; vault
-  `archive`→`ingest` interface; `handoff`; ad-hoc `dock forward`.
+- **M5** — `grill`/`review`/`triage`/`test`/`handoff`/`archive` skills; the vault
+  `archive`→`ingest` interface (`dock archive` copies works/ to the vault inbox
+  and runs a `bin/ingest` hook). ✅
+- **M6 (next)** — `retrospect`/`hindsight` self-improvement (telemetry + per-phase
+  artifacts); skill versioning + proposal/approval; ad-hoc `dock forward`.
 
 Try it (no Docker needed to preview):
 
