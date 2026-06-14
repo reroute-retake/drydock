@@ -105,6 +105,12 @@ LiteLLM gateway logs per-call events into the session via a generated callback
 **ForgeCode per-phase agents from `routing:`** (each phase uses its assigned
 model; `review` differs from `develop`), mounted at `/workspace/.forge/agents`.
 
+**Integration test (real Docker host):** `make integration` (or `test/integration.sh`)
+builds the `jdk21-maven` dev image, brings up a throwaway space, and checks the
+gateway serves the routed aliases, ForgeCode points at it, a chat routes through
+(local Ollama or a hosted key), and the telemetry callback wrote events. It is
+self-contained (temp `DRYDOCK_HOME`/`DRYDOCK_STATE`) and tears itself down.
+
 Try it (no Docker needed to preview):
 
 ```bash
