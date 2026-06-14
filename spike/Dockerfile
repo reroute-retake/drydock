@@ -6,10 +6,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates curl git jq \
     && rm -rf /var/lib/apt/lists/*
 
-# Install ForgeCode. Pin a version in real builds; non-fatal here so the gateway
-# checks still run even if the harness install changes — verify.sh reports status.
-RUN curl -fsSL https://forgecode.dev/cli | sh || true
-ENV PATH="/root/.forge/bin:${PATH}"
+# Install ForgeCode. It installs to $HOME/.local/bin (= /root/.local/bin as root).
+# Pin a version with: ... | sh -s -- <version>  (the version is a positional arg).
+RUN curl -fsSL https://forgecode.dev/cli | sh
+ENV PATH="/root/.local/bin:${PATH}"
 
 COPY verify.sh /usr/local/bin/verify.sh
 RUN chmod +x /usr/local/bin/verify.sh

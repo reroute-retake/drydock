@@ -86,7 +86,8 @@ func TestDockerfile(t *testing.T) {
 	for _, want := range []string{
 		"FROM debian:12-slim",
 		"forgecode.dev/cli",
-		"maven",
+		"temurin-21-jdk maven",
+		"packages.adoptium.net",
 		"nodejs npm",
 		"# stack: bogus",
 		"no known layer",
@@ -138,12 +139,16 @@ func TestLiteLLMLogger(t *testing.T) {
 
 func TestDockerfileForgePin(t *testing.T) {
 	m := manifest()
-	if strings.Contains(Dockerfile(m), "FORGE_VERSION=") {
-		t.Fatal("unpinned manifest should not set FORGE_VERSION")
+	out := Dockerfile(m)
+	if strings.Contains(out, "sh -s --") {
+		t.Fatal("unpinned manifest should not pass a version arg")
+	}
+	if !strings.Contains(out, `PATH="/root/.local/bin`) {
+		t.Fatalf("forge must be on /root/.local/bin PATH:\n%s", out)
 	}
 	m.Forge = config.Forge{Version: "v1.2.3"}
-	if !strings.Contains(Dockerfile(m), "FORGE_VERSION=v1.2.3") {
-		t.Fatalf("expected forge pin in Dockerfile:\n%s", Dockerfile(m))
+	if !strings.Contains(Dockerfile(m), "sh -s -- v1.2.3") {
+		t.Fatalf("expected positional-arg forge pin:\n%s", Dockerfile(m))
 	}
 }
 
