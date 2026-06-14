@@ -7,16 +7,19 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/reroute-retake/drydock/internal/config"
 	"github.com/reroute-retake/drydock/internal/gen"
 	"github.com/reroute-retake/drydock/internal/paths"
+	"github.com/reroute-retake/drydock/internal/proposal"
 	"github.com/reroute-retake/drydock/internal/selfupdate"
 	"github.com/reroute-retake/drydock/internal/stack"
 	"github.com/reroute-retake/drydock/internal/telemetry"
@@ -53,6 +56,11 @@ Tickets (lifecycle state — the works/ artifact contract):
   work status [t]    Show a ticket's phase state
   work set <phase> <status> [--model m --note n --artifact f]   Record phase progress
   archive [ticket]   Copy a ticket's artifacts to the vault inbox and run vault:ingest [--clean]
+
+Self-improvement (telemetry + human-gated skill proposals):
+  telemetry [--ticket t] [--json]   Summarize captured session telemetry (input to retrospect)
+  skill propose <skill> --content <file> [--source s --rationale r]   Propose a skill change (pending)
+  skill list | show <id> | apply <id> [--to dir] | reject <id>        Review/apply proposals (human gate)
 
 Maintenance:
   update             Refresh the active space's config/scaffolding (NOT the binary)
@@ -109,6 +117,10 @@ func main() {
 		err = cmdWork(args)
 	case "archive":
 		err = cmdArchive(args)
+	case "telemetry":
+		err = cmdTelemetry(args)
+	case "skill":
+		err = cmdSkill(args)
 	case "forward":
 		err = cmdForward(args)
 	case "self-update":
@@ -560,6 +572,175 @@ func cmdArchive(args []string) error {
 	}
 	fmt.Printf("archived %s\n", ticket)
 	return nil
+}
+
+func cmdTelemetry(args []string) error {
+	jsonOut := false
+	var ticket string
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--json":
+			jsonOut = true
+		case "--ticket":
+			if i++; i < len(args) {
+				ticket = args[i]
+			}
+		}
+	}
+	sp, err := activeSpace()
+	if err != nil {
+		return err
+	}
+	root := filepath.Join(paths.StateHome(), "sessions", sp.Name)
+	if ticket != "" {
+		root = filepath.Join(root, ticket)
+	}
+	files := telemetry.FindEventFiles(root)
+	var all []telemetry.Event
+	for _, f := range files {
+		evs, _ := telemetry.ReadEvents(f)
+		all = append(all, evs...)
+	}
+	sum := telemetry.Summarize(all)
+	sum.Sessions = len(files)
+	if jsonOut {
+		b, _ := json.MarshalIndent(sum, "", "  ")
+		fmt.Println(string(b))
+		return nil
+	}
+	fmt.Printf("telemetry: space=%s ticket=%s | sessions=%d events=%d failures=%d tokens=%d/%d cost=$%.4f\n",
+		sp.Name, orAll(ticket), sum.Sessions, sum.Events, sum.Failures, sum.TokensIn, sum.TokensOut, sum.CostUSD)
+	phases := make([]string, 0, len(sum.ByPhase))
+	for k := range sum.ByPhase {
+		phases = append(phases, k)
+	}
+	sort.Strings(phases)
+	for _, ph := range phases {
+		st := sum.ByPhase[ph]
+		fmt.Printf("  %-10s events=%-3d fail=%-2d tools=%-3d llm=%-3d cost=$%.4f\n",
+			ph, st.Events, st.Failures, st.ToolCalls, st.LLMCalls, st.CostUSD)
+	}
+	if sum.Sessions == 0 {
+		fmt.Println("  (no telemetry yet — run some lifecycle work first)")
+	}
+	return nil
+}
+
+func orAll(s string) string {
+	if s == "" {
+		return "*"
+	}
+	return s
+}
+
+func cmdSkill(args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("usage: dock skill <propose|list|show|apply|reject> ...")
+	}
+	pdir := filepath.Join(paths.StateHome(), "proposals")
+	switch args[0] {
+	case "propose":
+		if len(args) < 2 {
+			return fmt.Errorf("usage: dock skill propose <skill> --content <file> [--source s --rationale r]")
+		}
+		skill := args[1]
+		source, rationale, contentPath := "retrospect", "", ""
+		fl := args[2:]
+		for i := 0; i < len(fl); i++ {
+			switch fl[i] {
+			case "--source":
+				if i++; i < len(fl) {
+					source = fl[i]
+				}
+			case "--rationale":
+				if i++; i < len(fl) {
+					rationale = fl[i]
+				}
+			case "--content":
+				if i++; i < len(fl) {
+					contentPath = fl[i]
+				}
+			}
+		}
+		if contentPath == "" {
+			return fmt.Errorf("dock skill propose needs --content <file> (the revised SKILL.md, version bumped)")
+		}
+		content, err := os.ReadFile(contentPath)
+		if err != nil {
+			return err
+		}
+		p, err := proposal.Create(pdir, skill, source, rationale, string(content))
+		if err != nil {
+			return err
+		}
+		fmt.Printf("proposal %s created (pending) for skill %q — review with 'dock skill show %s'\n", p.ID, skill, p.ID)
+		return nil
+
+	case "list":
+		ps, err := proposal.List(pdir)
+		if err != nil {
+			return err
+		}
+		if len(ps) == 0 {
+			fmt.Println("no proposals")
+			return nil
+		}
+		for _, p := range ps {
+			fmt.Printf("  %-28s %-9s %-10s %s\n", p.ID, p.Status, p.Source, p.Skill)
+		}
+		return nil
+
+	case "show":
+		if len(args) < 2 {
+			return fmt.Errorf("usage: dock skill show <id>")
+		}
+		p, content, err := proposal.Load(pdir, args[1])
+		if err != nil {
+			return err
+		}
+		fmt.Printf("id: %s\nskill: %s\nsource: %s\nstatus: %s\nrationale: %s\n--- proposed SKILL.md ---\n%s",
+			p.ID, p.Skill, p.Source, p.Status, p.Rationale, content)
+		return nil
+
+	case "apply":
+		if len(args) < 2 {
+			return fmt.Errorf("usage: dock skill apply <id> [--to <skills-dir>]")
+		}
+		id := args[1]
+		to := "skills"
+		fl := args[2:]
+		for i := 0; i < len(fl); i++ {
+			if fl[i] == "--to" {
+				if i++; i < len(fl) {
+					to = fl[i]
+				}
+			}
+		}
+		p, _, err := proposal.Load(pdir, id)
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(to, p.Skill, "SKILL.md")
+		if err := proposal.Apply(pdir, id, target); err != nil {
+			return err
+		}
+		fmt.Printf("applied %s -> %s\n", id, target)
+		fmt.Println("review the change, then commit it (the SKILL.md should carry a bumped metadata.version)")
+		return nil
+
+	case "reject":
+		if len(args) < 2 {
+			return fmt.Errorf("usage: dock skill reject <id>")
+		}
+		if err := proposal.SetStatus(pdir, args[1], proposal.StatusRejected); err != nil {
+			return err
+		}
+		fmt.Printf("rejected %s\n", args[1])
+		return nil
+
+	default:
+		return fmt.Errorf("usage: dock skill <propose|list|show|apply|reject> ...")
+	}
 }
 
 func cmdForward(args []string) error {

@@ -5,6 +5,7 @@ package gen
 
 import (
 	"bytes"
+	"path/filepath"
 	"sort"
 	"strings"
 	"text/template"
@@ -75,8 +76,8 @@ func LiteLLMConfig(m *config.Manifest) (string, error) {
 }
 
 type composeData struct {
-	Space, Drydock, Env, LiteLLM, Repos, Vault, Works string
-	Ports                                             []int
+	Space, Drydock, Env, LiteLLM, Repos, Vault, Works, Telemetry string
+	Ports                                                        []int
 }
 
 var composeTmpl = template.Must(template.New("compose").Parse(
@@ -105,6 +106,7 @@ services:
       - "{{.Repos}}:/workspace/repos"
       - "{{.Vault}}:/workspace/vault"
       - "{{.Works}}:/workspace/works"
+      - "{{.Telemetry}}:/workspace/telemetry:ro"
 {{- if .Ports}}
     ports:
 {{- range .Ports}}
@@ -119,14 +121,15 @@ services:
 // plus the dev container, with repos/vault/works mounted and ports published.
 func ComposeFile(m *config.Manifest, sp paths.Space) (string, error) {
 	data := composeData{
-		Space:   m.Space,
-		Drydock: sp.Drydock,
-		Env:     sp.Env(),
-		LiteLLM: sp.LiteLLM(),
-		Repos:   sp.Repos,
-		Vault:   sp.Vault,
-		Works:   sp.Works,
-		Ports:   m.Ports,
+		Space:     m.Space,
+		Drydock:   sp.Drydock,
+		Env:       sp.Env(),
+		LiteLLM:   sp.LiteLLM(),
+		Repos:     sp.Repos,
+		Vault:     sp.Vault,
+		Works:     sp.Works,
+		Telemetry: filepath.Join(paths.StateHome(), "sessions", m.Space),
+		Ports:     m.Ports,
 	}
 	var buf bytes.Buffer
 	if err := composeTmpl.Execute(&buf, data); err != nil {

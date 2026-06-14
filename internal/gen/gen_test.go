@@ -58,6 +58,7 @@ func TestComposeFile(t *testing.T) {
 		"/workspace/repos",
 		"/workspace/vault",
 		"/workspace/works",
+		"/workspace/telemetry:ro",
 		`"8080:8080"`,
 		`"9090:9090"`,
 		"host.docker.internal:host-gateway",

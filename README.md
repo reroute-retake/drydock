@@ -80,8 +80,13 @@ running. Promote only after `dock-dev version && dock-dev doctor`.
 - **M5** — `grill`/`review`/`triage`/`test`/`handoff`/`archive` skills; the vault
   `archive`→`ingest` interface (`dock archive` copies works/ to the vault inbox
   and runs a `bin/ingest` hook). ✅
-- **M6 (next)** — `retrospect`/`hindsight` self-improvement (telemetry + per-phase
-  artifacts); skill versioning + proposal/approval; ad-hoc `dock forward`.
+- **M6** — `retrospect` (telemetry) + `hindsight` (per-phase artifacts) skills;
+  `dock telemetry` summary; human-gated, versioned skill proposals via
+  `dock skill propose / list / show / apply / reject`. ✅
+
+All M0–M6 milestones are implemented. Next pass is hardening: multi-space
+resource management, reproducibility/pinning audits, and an evaluation harness
+that scores skill-change proposals before they're applied.
 
 Try it (no Docker needed to preview):
 
