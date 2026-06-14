@@ -19,6 +19,7 @@ import (
 	"github.com/reroute-retake/drydock/internal/config"
 	"github.com/reroute-retake/drydock/internal/gen"
 	"github.com/reroute-retake/drydock/internal/paths"
+	"github.com/reroute-retake/drydock/internal/ports"
 	"github.com/reroute-retake/drydock/internal/proposal"
 	"github.com/reroute-retake/drydock/internal/selfupdate"
 	"github.com/reroute-retake/drydock/internal/stack"
@@ -48,8 +49,9 @@ Environment:
   shell              Attach a shell to the running space container
   forward <h:c>      Ad-hoc port forward host:container                         [M3]
   stop               Stop the space containers
+  ps                 List running drydock spaces (docker compose ls)
   sync               git pull --ff-only all repos in the active space
-  space switch <s>   Switch the active space
+  space switch <s>   Switch the active space (concurrent by default; --stop stops the previous)
 
 Tickets (lifecycle state — the works/ artifact contract):
   work new <ticket>  Scaffold a ticket's works/ folder (ticket.md, state.yaml) and make it active
@@ -107,6 +109,8 @@ func main() {
 		err = cmdShell(args)
 	case "stop":
 		err = cmdStop(args)
+	case "ps":
+		err = cmdPs(args)
 	case "sync":
 		err = cmdSync(args)
 	case "space":
@@ -280,10 +284,25 @@ func cmdStart(args []string) error {
 	if _, err := telemetry.StartSession(sdir, sp.Name, "_session", session); err != nil {
 		fmt.Fprintln(os.Stderr, "warning: could not start telemetry session:", err)
 	}
+	gw := gen.GatewayHostPort(m)
+	if !dryRun {
+		var busy []int
+		if !ports.Free(gw) {
+			busy = append(busy, gw)
+		}
+		for _, p := range m.Ports {
+			if !ports.Free(p) {
+				busy = append(busy, p)
+			}
+		}
+		if len(busy) > 0 {
+			return fmt.Errorf("host port(s) already in use: %v — run 'dock ps', stop a space, or change ports/gateway_port in space.yaml", busy)
+		}
+	}
 	if err := run("docker", "compose", "-f", sp.Compose(), "up", "-d"); err != nil {
 		return err
 	}
-	fmt.Println("gateway:  http://localhost:4000/v1")
+	fmt.Printf("gateway:  http://localhost:%d/v1\n", gw)
 	for _, p := range m.Ports {
 		fmt.Printf("preview:  http://localhost:%d\n", p)
 	}
@@ -333,25 +352,44 @@ func cmdSync(args []string) error {
 }
 
 func cmdSpace(args []string) error {
-	if len(args) < 2 || args[0] != "switch" {
-		return fmt.Errorf("usage: dock space switch <space>")
+	stop := false
+	var rest []string
+	for _, a := range args {
+		if a == "--stop" {
+			stop = true
+		} else {
+			rest = append(rest, a)
+		}
 	}
-	target := args[1]
+	if len(rest) < 2 || rest[0] != "switch" {
+		return fmt.Errorf("usage: dock space switch <space> [--stop]")
+	}
+	target := rest[1]
 	tp := paths.For(target)
 	if _, err := os.Stat(tp.Manifest()); err != nil {
 		return fmt.Errorf("space %q not found (no %s); run 'dock setup %s' first", target, tp.Manifest(), target)
 	}
-	if cur, err := activeSpace(); err == nil && cur.Name != target {
-		if _, err := os.Stat(cur.Compose()); err == nil {
-			fmt.Println("stopping current space:", cur.Name)
-			_ = run("docker", "compose", "-f", cur.Compose(), "down")
+	if stop {
+		if cur, err := activeSpace(); err == nil && cur.Name != target {
+			if _, err := os.Stat(cur.Compose()); err == nil {
+				fmt.Println("stopping current space:", cur.Name)
+				_ = run("docker", "compose", "-f", cur.Compose(), "down")
+			}
 		}
 	}
 	if err := setActive(target); err != nil {
 		return err
 	}
 	fmt.Printf("active space is now %q (%s)\n", target, tp.Root)
+	if !stop {
+		fmt.Println("(previous space left running for concurrency; use --stop to stop it, or 'dock ps')")
+	}
 	return nil
+}
+
+func cmdPs(args []string) error {
+	// List running drydock compose projects (named drydock-<space>).
+	return run("docker", "compose", "ls")
 }
 
 func cmdUpdate(args []string) error {

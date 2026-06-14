@@ -75,6 +75,7 @@ type Manifest struct {
 	Repos         []Repo            `yaml:"repos"`
 	Image         Image             `yaml:"image"`
 	Ports         []int             `yaml:"ports,omitempty"`
+	GatewayPort   int               `yaml:"gateway_port,omitempty"` // host port for the gateway; 0 = derive per-space
 	MCP           []MCP             `yaml:"mcp,omitempty"`
 	Models        map[string]Model  `yaml:"models"`
 	Routing       map[string]string `yaml:"routing"`

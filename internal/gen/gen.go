@@ -12,6 +12,7 @@ import (
 
 	"github.com/reroute-retake/drydock/internal/config"
 	"github.com/reroute-retake/drydock/internal/paths"
+	"github.com/reroute-retake/drydock/internal/ports"
 )
 
 // envKey maps a provider to the env var holding its API key.
@@ -77,7 +78,17 @@ func LiteLLMConfig(m *config.Manifest) (string, error) {
 
 type composeData struct {
 	Space, Drydock, Env, LiteLLM, Repos, Vault, Works, Telemetry string
+	GatewayPort                                                  int
 	Ports                                                        []int
+}
+
+// GatewayHostPort returns the host port a space's gateway is published on:
+// the manifest's gateway_port if set, otherwise a deterministic per-space port.
+func GatewayHostPort(m *config.Manifest) int {
+	if m.GatewayPort != 0 {
+		return m.GatewayPort
+	}
+	return ports.GatewayPort(m.Space)
 }
 
 var composeTmpl = template.Must(template.New("compose").Parse(
@@ -87,6 +98,8 @@ services:
   gateway:
     image: ghcr.io/berriai/litellm:main-stable
     command: ["--config", "/etc/litellm/config.yaml", "--port", "4000"]
+    ports:
+      - "{{.GatewayPort}}:4000"
     volumes:
       - "{{.LiteLLM}}:/etc/litellm/config.yaml:ro"
     env_file: ["{{.Env}}"]
@@ -121,15 +134,16 @@ services:
 // plus the dev container, with repos/vault/works mounted and ports published.
 func ComposeFile(m *config.Manifest, sp paths.Space) (string, error) {
 	data := composeData{
-		Space:     m.Space,
-		Drydock:   sp.Drydock,
-		Env:       sp.Env(),
-		LiteLLM:   sp.LiteLLM(),
-		Repos:     sp.Repos,
-		Vault:     sp.Vault,
-		Works:     sp.Works,
-		Telemetry: filepath.Join(paths.StateHome(), "sessions", m.Space),
-		Ports:     m.Ports,
+		Space:       m.Space,
+		Drydock:     sp.Drydock,
+		Env:         sp.Env(),
+		LiteLLM:     sp.LiteLLM(),
+		Repos:       sp.Repos,
+		Vault:       sp.Vault,
+		Works:       sp.Works,
+		Telemetry:   filepath.Join(paths.StateHome(), "sessions", m.Space),
+		GatewayPort: GatewayHostPort(m),
+		Ports:       m.Ports,
 	}
 	var buf bytes.Buffer
 	if err := composeTmpl.Execute(&buf, data); err != nil {

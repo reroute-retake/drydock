@@ -84,9 +84,13 @@ running. Promote only after `dock-dev version && dock-dev doctor`.
   `dock telemetry` summary; human-gated, versioned skill proposals via
   `dock skill propose / list / show / apply / reject`. ✅
 
-All M0–M6 milestones are implemented. Next pass is hardening: multi-space
-resource management, reproducibility/pinning audits, and an evaluation harness
-that scores skill-change proposals before they're applied.
+All M0–M6 milestones are implemented. **Hardening pass (in progress):**
+- **H1** — multi-space concurrency: a per-space gateway host port, a port-conflict
+  pre-check on `dock start`, `dock ps`, and non-stopping `dock space switch`
+  (concurrent by default; `--stop` to stop the previous). ✅
+- **H2** — version pinning + reproducibility (pin ForgeCode + base-image digest;
+  `.drydock/lock.yaml`; record versions per session). *(next)*
+- **H3** — an eval harness that validates/scores skill proposals before `apply`. *(next)*
 
 Try it (no Docker needed to preview):
 

@@ -1,11 +1,13 @@
 package gen
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/reroute-retake/drydock/internal/config"
 	"github.com/reroute-retake/drydock/internal/paths"
+	"github.com/reroute-retake/drydock/internal/ports"
 )
 
 func manifest() *config.Manifest {
@@ -67,6 +69,9 @@ func TestComposeFile(t *testing.T) {
 			t.Fatalf("compose missing %q\n---\n%s", want, out)
 		}
 	}
+	if gw := fmt.Sprintf(`"%d:4000"`, ports.GatewayPort("payments")); !strings.Contains(out, gw) {
+		t.Fatalf("compose missing gateway port mapping %q\n---\n%s", gw, out)
+	}
 }
 
 func TestDockerfile(t *testing.T) {
@@ -88,14 +93,18 @@ func TestDockerfile(t *testing.T) {
 	}
 }
 
-func TestComposeNoPorts(t *testing.T) {
+func TestComposeNoDevPorts(t *testing.T) {
 	m := manifest()
 	m.Ports = nil
 	out, err := ComposeFile(m, paths.For("x"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(out, "ports:") {
-		t.Fatalf("expected no ports: block when Ports is empty\n%s", out)
+	// The gateway always publishes a port, but no dev-server mapping should appear.
+	if strings.Contains(out, `"8080:8080"`) {
+		t.Fatalf("expected no dev port mapping when Ports is empty\n%s", out)
+	}
+	if gw := fmt.Sprintf(`"%d:4000"`, ports.GatewayPort(m.Space)); !strings.Contains(out, gw) {
+		t.Fatalf("gateway mapping %q should still be present\n%s", gw, out)
 	}
 }
